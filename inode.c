@@ -33,10 +33,11 @@ struct inode *boogafs_iget(struct super_block *sb, const struct inode *dir, dev_
 //                        break;
 //                case S_IFDIR:
                         inode->i_op = &boogafs_inode_ops;
-//                        inode->i_fop = &booga_dir_operations;
+                        inode->i_fop = &simple_dir_operations; /* without this line, ls -a will not show the . and .. */
 
                         /* directory inodes start off with i_nlink == 2 (for "." entry) */
                         inc_nlink(inode);
+                  pr_info("set i nlink to 2\n");
 //                        break;
 //                case S_IFLNK:
 //                        inode->i_op = &page_symlink_inode_operations;
@@ -48,5 +49,5 @@ struct inode *boogafs_iget(struct super_block *sb, const struct inode *dir, dev_
 }
 
 static const struct inode_operations boogafs_inode_ops = {
-//    .lookup = booga_lookup,
+    .lookup = simple_lookup, /* without this line, ls -a will not show the . and .. */
 };

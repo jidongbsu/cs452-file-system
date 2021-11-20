@@ -19,6 +19,7 @@
 #define BOOGAFS_BLOCK_SIZE (1 << 12) /* 4 KiB */
 #define BOOGAFS_MAX_FILESIZE                                      \
     (uint64_t) BOOGAFS_N_BLOCKS * BOOGAFS_BLOCK_SIZE
+#define BOOGAFS_FILENAME_LEN 28
 
 /*
  * boogafs partition layout
@@ -98,9 +99,10 @@ extern const struct file_operations boogafs_file_ops;
 extern const struct address_space_operations boogafs_aops;
 
 /* Getters for superbock and inode */
-/* #define BOOGAFS_SB(sb) (sb->s_fs_info) */
-/* #define BOOGAFS_INODE(inode) \
-    (container_of(inode, struct boogafs_inode_info, vfs_inode)) */
+#define BOOGAFS_SB(sb) (sb->s_fs_info)
+#define BOOGAFS_INODE(inode) \
+    (container_of(inode, struct boogafs_inode_info, vfs_inode))
+
 #endif /* __KERNEL__ */
 
 #endif /* BOOGAFS_H */
