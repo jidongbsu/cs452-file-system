@@ -15,7 +15,7 @@
 #define BOOGAFS_BITMAP_H
 
 #include <linux/bitmap.h>
-#include "boogafs.h"
+#include "booga.h"
 
 /*
  * Return the first bit we found and clear the the following `len` consecutive

@@ -17,7 +17,7 @@
 #include <sys/stat.h>
 #include <unistd.h>
 #include <linux/fs.h>
-#include "boogafs.h"
+#include "booga.h"
 
 struct superblock {
     struct boogafs_sb_info info;
@@ -138,9 +138,10 @@ static int write_data_bitmap(int fd, struct superblock *sb)
      */
     memset(bfree, 0xff, BOOGAFS_BLOCK_SIZE);
     uint32_t i = 0;
+    uint64_t mask;
     while (nr_used) {
         uint64_t line = 0xffffffffffffffff;
-        for (uint64_t mask = 0x1; mask; mask <<= 1) {
+        for (mask = 0x1; mask; mask <<= 1) {
             line &= ~mask;
             nr_used--;
             if (!nr_used)

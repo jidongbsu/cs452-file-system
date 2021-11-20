@@ -7,7 +7,7 @@
 #include <linux/slab.h>
 #include <linux/statfs.h>
 
-#include "boogafs.h"
+#include "booga.h"
 
 static struct kmem_cache *boogafs_inode_cache;
 

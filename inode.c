@@ -6,7 +6,7 @@
 #include <linux/module.h>
 
 #include "bitmap.h"
-#include "boogafs.h"
+#include "booga.h"
 
 static const struct inode_operations boogafs_inode_ops;
 //static const struct inode_operations symlink_inode_ops;
