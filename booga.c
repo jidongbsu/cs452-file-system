@@ -1,5 +1,6 @@
 /**
-* boogafs.c - the start file
+ * boogafs.c - the start file; this file allows us to install and remove the module. 
+ * mount/umount will also be available if boogafs_fill_super is implemented.
  *
  * This file is derived from simplefs.
  * Original Author: 

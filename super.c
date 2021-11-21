@@ -1,6 +1,6 @@
 #define pr_fmt(fmt) KBUILD_MODNAME ": " fmt
 
-#include <linux/buffer_head.h>
+#include <linux/buffer_head.h> /* so we can use sb_bread() */
 #include <linux/fs.h>
 #include <linux/kernel.h>
 #include <linux/module.h>
@@ -32,6 +32,9 @@ static struct inode *boogafs_alloc_inode(struct super_block *sb)
     if (!ci)
         return NULL;
 
+    pr_info("this function is called during mount\n"); /* either: fill_super()-> boogafs_iget() -> iget_locked() -> alloc_inode(sb) -> sb->s_op->alloc_inode(sb) 
+                                                          or: fill_super() -> boogfs_iget() -> new_inode() -> new_inode_pseudo() -> alloc_inode(sb) -> sb->s_op->alloc_inode(sb)
+                                                        */
     inode_init_once(&ci->vfs_inode);
     return &ci->vfs_inode;
 }
@@ -46,7 +49,7 @@ static int boogafs_write_inode(struct inode *inode,
                                 struct writeback_control *wbc)
 {
     struct boogafs_inode *disk_inode;
-    struct boogafs_inode_info *ci = BOOGAFS_INODE(inode);
+//    struct boogafs_inode_info *ci = BOOGAFS_INODE(inode);
     struct super_block *sb = inode->i_sb;
     struct boogafs_sb_info *sbi = BOOGAFS_SB(sb);
     struct buffer_head *bh;
@@ -88,8 +91,8 @@ static void boogafs_put_super(struct super_block *sb)
 {
     struct boogafs_sb_info *sbi = BOOGAFS_SB(sb);
     if (sbi) {
-        kfree(sbi->ifree_bitmap);
-        kfree(sbi->bfree_bitmap);
+        kfree(sbi->inode_bitmap);
+        kfree(sbi->data_bitmap);
         kfree(sbi);
     }
 }
@@ -128,7 +131,7 @@ static int boogafs_sync_fs(struct super_block *sb, int wait)
         if (!bh)
             return -EIO;
 
-        memcpy(bh->b_data, (void *) sbi->ifree_bitmap + i * BOOGAFS_BLOCK_SIZE,
+        memcpy(bh->b_data, (void *) sbi->inode_bitmap + i * BOOGAFS_BLOCK_SIZE,
                BOOGAFS_BLOCK_SIZE);
 
         mark_buffer_dirty(bh);
@@ -145,7 +148,7 @@ static int boogafs_sync_fs(struct super_block *sb, int wait)
         if (!bh)
             return -EIO;
 
-        memcpy(bh->b_data, (void *) sbi->bfree_bitmap + i * BOOGAFS_BLOCK_SIZE,
+        memcpy(bh->b_data, (void *) sbi->data_bitmap + i * BOOGAFS_BLOCK_SIZE,
                BOOGAFS_BLOCK_SIZE);
 
         mark_buffer_dirty(bh);
@@ -195,19 +198,19 @@ int boogafs_fill_super(struct super_block *sb, void *data, int silent)
     pr_info("fill super block\n");
     /* Init sb */
     sb->s_magic = BOOGAFS_MAGIC;
-    sb_set_blocksize(sb, BOOGAFS_BLOCK_SIZE);
-    sb->s_maxbytes = BOOGAFS_MAX_FILESIZE;
-    sb->s_op = &boogafs_super_ops;
+    sb_set_blocksize(sb, BOOGAFS_BLOCK_SIZE); /* set sb->s_blocksize to BOOGAFS_BLOCK_SIZE, which is 4KB, as defined in booga.h */
+    sb->s_maxbytes = BOOGAFS_MAX_FILESIZE; /* as of now, we only use 12 direct pointers, thus the max file size is 12*4K=48KB */
+    sb->s_op = &boogafs_super_ops; /* install super block operation callbacks, including put_super, alloc_inode, destroy_inode, write_inode, sync_fc, statfs. */
 
     /* Read sb from disk */
-    bh = sb_bread(sb, BOOGAFS_SB_BLOCK_NR);
+    bh = sb_bread(sb, BOOGAFS_SB_BLOCK_NR); /* read block 0, which in our case is the super block, from the disk */
     if (!bh)
         return -EIO;
 
-    csb = (struct boogafs_sb_info *) bh->b_data;
+    csb = (struct boogafs_sb_info *) bh->b_data; /* sb_bread() reads the block and stores the data in bh->b_data */
 
     /* Check magic number */
-    if (csb->magic != sb->s_magic) {
+    if (csb->magic != sb->s_magic) { /* both struct boogafs_sb_info and struct super_block have this magic field */
         pr_err("Wrong magic number\n");
         ret = -EINVAL;
         goto release;
@@ -220,27 +223,28 @@ int boogafs_fill_super(struct super_block *sb, void *data, int silent)
         goto release;
     }
 
-    sbi->nr_blocks = csb->nr_blocks;
+    sbi->nr_blocks = csb->nr_blocks; /* whatever we read from the disk is now stored in csb, and we then copy each of its field into our sbi struct, which is a pointer points to some memory. */
     sbi->nr_inodes = csb->nr_inodes;
     sbi->nr_itable_blocks = csb->nr_itable_blocks;
     sbi->nr_ibitmap_blocks = csb->nr_ibitmap_blocks;
     sbi->nr_dbitmap_blocks = csb->nr_dbitmap_blocks;
     sbi->nr_free_inodes = csb->nr_free_inodes;
     sbi->nr_free_blocks = csb->nr_free_blocks;
-    sb->s_fs_info = sbi;
+    sb->s_fs_info = sbi; /* in struct super_block, there is "void  *s_fs_info;" commented as "filesystem private info" */
 
-    brelse(bh);
+    brelse(bh); /* decrement a buffer_head's reference count */
 
-    /* Alloc and copy ifree_bitmap */
-    sbi->ifree_bitmap =
+    /* Alloc and copy inode_bitmap */
+    sbi->inode_bitmap =
         kzalloc(sbi->nr_ibitmap_blocks * BOOGAFS_BLOCK_SIZE, GFP_KERNEL);
-    if (!sbi->ifree_bitmap) {
+    if (!sbi->inode_bitmap) {
         ret = -ENOMEM;
         goto free_sbi;
     }
 
     for (i = 0; i < sbi->nr_ibitmap_blocks; i++) {
-        int idx = sbi->nr_itable_blocks + i + 1;
+        /* int idx = sbi->nr_itable_blocks + i + 1; */
+        int idx = i + 1; /* unlike simplefs, in boogafs, the inode bitmap is right after the super block) */
 
         bh = sb_bread(sb, idx);
         if (!bh) {
@@ -248,22 +252,23 @@ int boogafs_fill_super(struct super_block *sb, void *data, int silent)
             goto free_ifree;
         }
 
-        memcpy((void *) sbi->ifree_bitmap + i * BOOGAFS_BLOCK_SIZE, bh->b_data,
+        memcpy((void *) sbi->inode_bitmap + i * BOOGAFS_BLOCK_SIZE, bh->b_data,
                BOOGAFS_BLOCK_SIZE);
 
         brelse(bh);
     }
 
-    /* Alloc and copy bfree_bitmap */
-    sbi->bfree_bitmap =
+    /* Alloc and copy data_bitmap */
+    sbi->data_bitmap =
         kzalloc(sbi->nr_dbitmap_blocks * BOOGAFS_BLOCK_SIZE, GFP_KERNEL);
-    if (!sbi->bfree_bitmap) {
+    if (!sbi->data_bitmap) {
         ret = -ENOMEM;
         goto free_ifree;
     }
 
     for (i = 0; i < sbi->nr_dbitmap_blocks; i++) {
-        int idx = sbi->nr_itable_blocks + sbi->nr_ibitmap_blocks + i + 1;
+        /* int idx = sbi->nr_itable_blocks + sbi->nr_ibitmap_blocks + i + 1; */
+        int idx = sbi->nr_ibitmap_blocks + i + 1; /* unlike simplefs, in boogafs, the data bitmap is right after the inode bitmap block */
 
         bh = sb_bread(sb, idx);
         if (!bh) {
@@ -271,7 +276,7 @@ int boogafs_fill_super(struct super_block *sb, void *data, int silent)
             goto free_bfree;
         }
 
-        memcpy((void *) sbi->bfree_bitmap + i * BOOGAFS_BLOCK_SIZE, bh->b_data,
+        memcpy((void *) sbi->data_bitmap + i * BOOGAFS_BLOCK_SIZE, bh->b_data,
                BOOGAFS_BLOCK_SIZE);
 
         brelse(bh);
@@ -297,9 +302,9 @@ int boogafs_fill_super(struct super_block *sb, void *data, int silent)
 iput:
     iput(root_inode);
 free_bfree:
-    kfree(sbi->bfree_bitmap);
+    kfree(sbi->data_bitmap);
 free_ifree:
-    kfree(sbi->ifree_bitmap);
+    kfree(sbi->inode_bitmap);
 free_sbi:
     kfree(sbi);
 release:

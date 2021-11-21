@@ -47,7 +47,7 @@ static inline uint32_t get_first_free_bits(unsigned long *freemap,
  */
 static inline uint32_t get_free_inode(struct boogafs_sb_info *sbi)
 {
-    uint32_t ret = get_first_free_bits(sbi->ifree_bitmap, sbi->nr_inodes, 1);
+    uint32_t ret = get_first_free_bits(sbi->inode_bitmap, sbi->nr_inodes, 1);
     if (ret)
         sbi->nr_free_inodes--;
     return ret;
@@ -60,7 +60,7 @@ static inline uint32_t get_free_inode(struct boogafs_sb_info *sbi)
 static inline uint32_t get_free_blocks(struct boogafs_sb_info *sbi,
                                        uint32_t len)
 {
-    uint32_t ret = get_first_free_bits(sbi->bfree_bitmap, sbi->nr_blocks, len);
+    uint32_t ret = get_first_free_bits(sbi->data_bitmap, sbi->nr_blocks, len);
     if (ret)
         sbi->nr_free_blocks -= len;
     return ret;
@@ -85,7 +85,7 @@ static inline int put_free_bits(unsigned long *freemap,
 /* Mark an inode as unused */
 static inline void put_inode(struct boogafs_sb_info *sbi, uint32_t ino)
 {
-    if (put_free_bits(sbi->ifree_bitmap, sbi->nr_inodes, ino, 1))
+    if (put_free_bits(sbi->inode_bitmap, sbi->nr_inodes, ino, 1))
         return;
 
     sbi->nr_free_inodes++;
@@ -96,7 +96,7 @@ static inline void put_blocks(struct boogafs_sb_info *sbi,
                               uint32_t bno,
                               uint32_t len)
 {
-    if (put_free_bits(sbi->bfree_bitmap, sbi->nr_blocks, bno, len))
+    if (put_free_bits(sbi->data_bitmap, sbi->nr_blocks, bno, len))
         return;
 
     sbi->nr_free_blocks += len;

@@ -18,7 +18,7 @@
 #define BOOGAFS_SB_BLOCK_NR 0
 #define BOOGAFS_BLOCK_SIZE (1 << 12) /* 4 KiB */
 #define BOOGAFS_MAX_FILESIZE                                      \
-    (uint64_t) BOOGAFS_N_BLOCKS * BOOGAFS_BLOCK_SIZE
+    (uint64_t) BOOGAFS_N_BLOCKS * BOOGAFS_BLOCK_SIZE /* in our very simple file system, the max size of a file is 4KB * 12 = 48KB. */
 #define BOOGAFS_FILENAME_LEN 28
 
 /*
@@ -74,8 +74,8 @@ struct boogafs_sb_info {
     uint32_t nr_free_blocks; /* Number of free blocks */
 
 #ifdef __KERNEL__
-    unsigned long *ifree_bitmap; /* In-memory free inodes bitmap */
-    unsigned long *bfree_bitmap; /* In-memory free blocks bitmap */
+    unsigned long *inode_bitmap; /* In-memory free inodes bitmap */
+    unsigned long *data_bitmap; /* In-memory free blocks bitmap */
 #endif
 };
 
