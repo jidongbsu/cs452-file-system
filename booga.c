@@ -58,7 +58,7 @@ static struct file_system_type boogafs_file_system_type = {
 static int __init boogafs_init(void)
 {
     int ret;
-    ret = boogafs_init_inode_cache();
+    ret = boogafs_init_inodecache();
     if (ret) {
         pr_err("inode cache creation failed\n");
         goto end;
@@ -82,7 +82,7 @@ static void __exit boogafs_exit(void)
     if (ret)
         pr_err("unregister_filesystem() failed\n");
 
-    boogafs_destroy_inode_cache();
+    boogafs_destroy_inodecache();
 
     pr_info("module unloaded\n");
 }

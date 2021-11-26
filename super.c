@@ -1,3 +1,15 @@
+/**
+ * super.c - in this file we implement functions to handle the superblock.
+ *
+ * This file is derived from simplefs.
+ * Original Author: 
+ *   Jim Huang <jserv.tw@gmail.com>
+ *
+ * One change is we don't use inode 0 for the root inode, instead we use inode 2, which is the same choice as in the ext2 file system.
+ * Author:
+ *   Jidong Xiao <jidongxiao@boisestate.edu>
+ */
+
 #define pr_fmt(fmt) KBUILD_MODNAME ": " fmt
 
 #include <linux/buffer_head.h> /* so we can use sb_bread() */
@@ -11,7 +23,7 @@
 
 static struct kmem_cache *boogafs_inode_cache;
 
-int boogafs_init_inode_cache(void)
+int boogafs_init_inodecache(void)
 {
     boogafs_inode_cache = kmem_cache_create(
         "boogafs_cache", sizeof(struct boogafs_inode_info), 0, 0, NULL);
@@ -20,7 +32,7 @@ int boogafs_init_inode_cache(void)
     return 0;
 }
 
-void boogafs_destroy_inode_cache(void)
+void boogafs_destroy_inodecache(void)
 {
     kmem_cache_destroy(boogafs_inode_cache);
 }
@@ -49,7 +61,7 @@ static int boogafs_write_inode(struct inode *inode,
                                 struct writeback_control *wbc)
 {
     struct boogafs_inode *disk_inode;
-//    struct boogafs_inode_info *ci = BOOGAFS_INODE(inode);
+    struct boogafs_inode_info *ci = BOOGAFS_INODE(inode);
     struct super_block *sb = inode->i_sb;
     struct boogafs_sb_info *sbi = BOOGAFS_SB(sb);
     struct buffer_head *bh;
@@ -75,10 +87,8 @@ static int boogafs_write_inode(struct inode *inode,
     disk_inode->i_ctime = inode->i_ctime.tv_sec;
     disk_inode->i_atime = inode->i_atime.tv_sec;
     disk_inode->i_mtime = inode->i_mtime.tv_sec;
-    disk_inode->i_blocks = inode->i_blocks;
     disk_inode->i_nlink = inode->i_nlink;
-//    disk_inode->ei_block = ci->ei_block;
-//    strncpy(disk_inode->i_data, ci->i_data, sizeof(ci->i_data));
+    disk_inode->data_block = ci->data_block;
 
     mark_buffer_dirty(bh);
     sync_dirty_buffer(bh);
@@ -202,13 +212,16 @@ int boogafs_fill_super(struct super_block *sb, void *data, int silent)
     sb->s_maxbytes = BOOGAFS_MAX_FILESIZE; /* as of now, we only use 12 direct pointers, thus the max file size is 12*4K=48KB */
     sb->s_op = &boogafs_super_ops; /* install super block operation callbacks, including put_super, alloc_inode, destroy_inode, write_inode, sync_fc, statfs. */
 
+    pr_info("fill super checker 1\n");
     /* Read sb from disk */
-    bh = sb_bread(sb, BOOGAFS_SB_BLOCK_NR); /* read block 0, which in our case is the super block, from the disk */
+    bh = sb_bread(sb, 0); /* read block 0, which in our case is the super block, from the disk */
     if (!bh)
         return -EIO;
 
+    pr_info("fill super checker 2.0\n");
     csb = (struct boogafs_sb_info *) bh->b_data; /* sb_bread() reads the block and stores the data in bh->b_data */
 
+    pr_info("fill super checker 2.1\n");
     /* Check magic number */
     if (csb->magic != sb->s_magic) { /* both struct boogafs_sb_info and struct super_block have this magic field */
         pr_err("Wrong magic number\n");
@@ -216,6 +229,7 @@ int boogafs_fill_super(struct super_block *sb, void *data, int silent)
         goto release;
     }
 
+    pr_info("fill super checker 3\n");
     /* Alloc sb_info */
     sbi = kzalloc(sizeof(struct boogafs_sb_info), GFP_KERNEL);
     if (!sbi) {
@@ -223,6 +237,7 @@ int boogafs_fill_super(struct super_block *sb, void *data, int silent)
         goto release;
     }
 
+    sbi->magic = csb->magic;
     sbi->nr_blocks = csb->nr_blocks; /* whatever we read from the disk is now stored in csb, and we then copy each of its field into our sbi struct, which is a pointer points to some memory. */
     sbi->nr_inodes = csb->nr_inodes;
     sbi->nr_itable_blocks = csb->nr_itable_blocks;
@@ -234,6 +249,7 @@ int boogafs_fill_super(struct super_block *sb, void *data, int silent)
 
     brelse(bh); /* decrement a buffer_head's reference count */
 
+    pr_info("fill super checker 4\n");
     /* Alloc and copy inode_bitmap */
     sbi->inode_bitmap =
         kzalloc(sbi->nr_ibitmap_blocks * BOOGAFS_BLOCK_SIZE, GFP_KERNEL);
@@ -242,6 +258,7 @@ int boogafs_fill_super(struct super_block *sb, void *data, int silent)
         goto free_sbi;
     }
 
+    pr_info("fill super checker 5\n");
     for (i = 0; i < sbi->nr_ibitmap_blocks; i++) {
         /* int idx = sbi->nr_itable_blocks + i + 1; */
         int idx = i + 1; /* unlike simplefs, in boogafs, the inode bitmap is right after the super block) */
@@ -258,6 +275,7 @@ int boogafs_fill_super(struct super_block *sb, void *data, int silent)
         brelse(bh);
     }
 
+    pr_info("fill super checker 6\n");
     /* Alloc and copy data_bitmap */
     sbi->data_bitmap =
         kzalloc(sbi->nr_dbitmap_blocks * BOOGAFS_BLOCK_SIZE, GFP_KERNEL);
@@ -266,6 +284,7 @@ int boogafs_fill_super(struct super_block *sb, void *data, int silent)
         goto free_ifree;
     }
 
+    pr_info("fill super checker 7\n");
     for (i = 0; i < sbi->nr_dbitmap_blocks; i++) {
         /* int idx = sbi->nr_itable_blocks + sbi->nr_ibitmap_blocks + i + 1; */
         int idx = sbi->nr_ibitmap_blocks + i + 1; /* unlike simplefs, in boogafs, the data bitmap is right after the inode bitmap block */
@@ -282,13 +301,15 @@ int boogafs_fill_super(struct super_block *sb, void *data, int silent)
         brelse(bh);
     }
 
+    pr_info("create root inode...\n");
     /* Create root inode */
-    root_inode = boogafs_iget(sb, NULL, 0);
+    root_inode = boogafs_iget(sb, BOOGAFS_ROOT_INO); /* inode number can not be zero: it seems that VFS consider 0 as an invalid inode number; thus here we use 2. */
     if (IS_ERR(root_inode)) {
         ret = PTR_ERR(root_inode);
         goto free_bfree;
     }
-//    inode_init_owner(root_inode, NULL, root_inode->i_mode);
+    pr_info("init root inode...\n");
+    inode_init_owner(root_inode, NULL, root_inode->i_mode);
     sb->s_root = d_make_root(root_inode);
     if (!sb->s_root) {
         ret = -ENOMEM;

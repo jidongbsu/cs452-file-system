@@ -14,12 +14,14 @@
 #define BOOGAFS_H
 
 /* source: https://en.wikipedia.org/wiki/Hexspeak */
-#define BOOGAFS_MAGIC 0xDEADCELL
+#define BOOGAFS_MAGIC 0x12345678
 #define BOOGAFS_SB_BLOCK_NR 0
 #define BOOGAFS_BLOCK_SIZE (1 << 12) /* 4 KiB */
-#define BOOGAFS_MAX_FILESIZE                                      \
-    (uint64_t) BOOGAFS_N_BLOCKS * BOOGAFS_BLOCK_SIZE /* in our very simple file system, the max size of a file is 4KB * 12 = 48KB. */
-#define BOOGAFS_FILENAME_LEN 28
+#define BOOGAFS_MAX_FILESIZE \
+    (uint64_t) BOOGAFS_N_BLOCKS * BOOGAFS_BLOCK_SIZE /* in our very simple file system, the max size of a file is 4KB. */
+#define BOOGAFS_FILENAME_LEN 8
+#define BOOGAFS_MAX_SUBFILES 128
+#define BOOGAFS_ROOT_INO 2
 
 /*
  * boogafs partition layout
@@ -41,8 +43,8 @@
 /**
  * Constants relative to the data blocks
  */
-#define	BOOGAFS_NDIR_BLOCKS		12
-#define	BOOGAFS_N_BLOCKS		BOOGAFS_NDIR_BLOCKS /* in boogafs, we only have direct pointers */
+#define	BOOGAFS_NDIR_BLOCKS		1
+#define	BOOGAFS_N_BLOCKS		BOOGAFS_NDIR_BLOCKS /* in boogafs, we only have 1 direct pointer */
 
 struct boogafs_inode {
     uint32_t i_mode;   /* File mode */
@@ -52,9 +54,8 @@ struct boogafs_inode {
     uint32_t i_ctime;  /* Inode change time */
     uint32_t i_atime;  /* Access time */
     uint32_t i_mtime;  /* Modification time */
-    uint32_t i_blocks; /* Block count */
     uint32_t i_nlink;  /* Hard links count */
-    __le32  i_block[BOOGAFS_N_BLOCKS];  /* Pointers to blocks */
+    uint32_t data_block;  /* Pointer to the block - we only support one block right now */
 };
 
 #define BOOGAFS_INODES_PER_BLOCK \
@@ -79,10 +80,19 @@ struct boogafs_sb_info {
 #endif
 };
 
+struct boogafs_dir_entry {
+	uint32_t inode;
+	char name[BOOGAFS_FILENAME_LEN];
+};
+
+struct boogafs_dir_block {
+    struct boogafs_dir_entry files[BOOGAFS_MAX_SUBFILES];
+};
+
 #ifdef __KERNEL__
 
 struct boogafs_inode_info {
-    __le32 i_data[12];
+    uint32_t data_block;  /* pointer for this file/dir */
     struct inode vfs_inode;
 };
 
@@ -90,13 +100,15 @@ struct boogafs_inode_info {
 int boogafs_fill_super(struct super_block *sb, void *data, int silent);
 
 /* inode functions */
-int boogafs_init_inode_cache(void);
-void boogafs_destroy_inode_cache(void);
-struct inode *boogafs_iget(struct super_block *sb, const struct inode *dir, dev_t dev);
+int boogafs_init_inodecache(void);
+void boogafs_destroy_inodecache(void);
+struct inode *boogafs_iget(struct super_block *sb, unsigned long ino);
 
 /* file functions */
 extern const struct file_operations boogafs_file_ops;
-extern const struct address_space_operations boogafs_aops;
+extern const struct inode_operations boogafs_file_inode_ops;
+extern const struct file_operations boogafs_dir_ops;
+extern const struct inode_operations boogafs_dir_inode_ops;
 
 /* Getters for superbock and inode */
 #define BOOGAFS_SB(sb) (sb->s_fs_info)

@@ -35,17 +35,17 @@ static inline uint32_t idiv_ceil(uint32_t a, uint32_t b)
 
 static struct superblock *write_superblock(int fd, struct stat *fstats)
 {
-    struct superblock *sb = malloc(sizeof(struct superblock));
+    struct superblock *sb = malloc(sizeof(struct superblock)); /* note that here struct superblock's size is also 4KB */
     if (!sb)
         return NULL;
 
     uint32_t nr_blocks = fstats->st_size / BOOGAFS_BLOCK_SIZE;
-    uint32_t nr_inodes = BOOGAFS_INODES_PER_BLOCK * 5;
-    uint32_t nr_ibitmap_blocks = idiv_ceil(nr_inodes, BOOGAFS_BLOCK_SIZE * 8); /* reserve one block to store inode bitmap */
-    uint32_t nr_dbitmap_blocks = idiv_ceil(nr_blocks, BOOGAFS_BLOCK_SIZE * 8); /* reserve one block to store data bitmap */
-    uint32_t nr_itable_blocks = idiv_ceil(nr_inodes, BOOGAFS_INODES_PER_BLOCK); /* reserve five blocks to store inode table */
+    uint32_t nr_inodes = BOOGAFS_INODES_PER_BLOCK;
+    uint32_t nr_ibitmap_blocks = 1; /* reserve one block to store inode bitmap */
+    uint32_t nr_dbitmap_blocks = 1; /* reserve one block to store data bitmap */
+    uint32_t nr_itable_blocks = 1; /* reserve one block to store inode table */
     uint32_t nr_data_blocks =
-        nr_blocks - 1 - nr_itable_blocks - nr_ibitmap_blocks - nr_dbitmap_blocks;
+        nr_blocks - 1 - nr_itable_blocks - nr_ibitmap_blocks - nr_dbitmap_blocks; /* 60 blocks */
 
     memset(sb, 0, sizeof(struct superblock));
     sb->info = (struct boogafs_sb_info){
@@ -94,26 +94,16 @@ static int write_inode_bitmap(int fd, struct superblock *sb)
     memset(ifree, 0xff, BOOGAFS_BLOCK_SIZE);
 
     /* First ifree block, containing first used inode */
-    ifree[0] = htole64(0xfffffffffffffffe);
+    ifree[0] = htole64(0xfffffffffffffffd);
     int ret = write(fd, ifree, BOOGAFS_BLOCK_SIZE);
     if (ret != BOOGAFS_BLOCK_SIZE) {
         ret = -1;
         goto end;
     }
 
-    /* All ifree blocks except the one containing 2 first inodes */
-    ifree[0] = 0xffffffffffffffff;
-    uint32_t i;
-    for (i = 1; i < le32toh(sb->info.nr_ibitmap_blocks); i++) {
-        ret = write(fd, ifree, BOOGAFS_BLOCK_SIZE);
-        if (ret != BOOGAFS_BLOCK_SIZE) {
-            ret = -1;
-            goto end;
-        }
-    }
     ret = 0;
 
-    printf("inode bitmap: wrote %d block(s)\n", i);
+    printf("inode bitmap: wrote 1 block(s)\n");
 
 end:
     free(block);
@@ -123,54 +113,28 @@ end:
 
 static int write_data_bitmap(int fd, struct superblock *sb)
 {
-    uint32_t nr_used = le32toh(sb->info.nr_itable_blocks) +
-                       le32toh(sb->info.nr_ibitmap_blocks) +
-                       le32toh(sb->info.nr_dbitmap_blocks) + 2;
-
     char *block = malloc(BOOGAFS_BLOCK_SIZE);
     if (!block)
         return -1;
+
     uint64_t *bfree = (uint64_t *) block;
 
-    /*
-     * First blocks (incl. super block + inode bitmap + data bitmap + inode table + 1 used block)
-     * we suppose it won't go further than the first block
-     */
+    /* set all bits to 1 */
     memset(bfree, 0xff, BOOGAFS_BLOCK_SIZE);
-    uint32_t i = 0;
-    uint64_t mask;
-    while (nr_used) {
-        uint64_t line = 0xffffffffffffffff;
-        for (mask = 0x1; mask; mask <<= 1) {
-            line &= ~mask;
-            nr_used--;
-            if (!nr_used)
-                break;
-        }
-        bfree[i] = htole64(line);
-        i++;
-    }
+
+    /* First bfree block, containing first used blocks */
+    bfree[0] = htole64(0xffffffffffffffe0);
     int ret = write(fd, bfree, BOOGAFS_BLOCK_SIZE);
     if (ret != BOOGAFS_BLOCK_SIZE) {
         ret = -1;
         goto end;
     }
 
-    /* other blocks - just in case the data bitmap occupies more than one block. */
-    memset(bfree, 0xff, BOOGAFS_BLOCK_SIZE);
-    for (i = 1; i < le32toh(sb->info.nr_dbitmap_blocks); i++) {
-        ret = write(fd, bfree, BOOGAFS_BLOCK_SIZE);
-        if (ret != BOOGAFS_BLOCK_SIZE) {
-            ret = -1;
-            goto end;
-        }
-    }
     ret = 0;
 
-    printf("data bitmap: wrote %d block(s)\n", i);
+    printf("data bitmap: wrote 1 block(s)\n");
 end:
     free(block);
-
     return ret;
 }
 
@@ -183,43 +147,31 @@ static int write_inode_table(int fd, struct superblock *sb)
 
     memset(block, 0, BOOGAFS_BLOCK_SIZE);
 
-    /* Root inode (inode 0) */
+    /* Root inode (inode 2) */
     struct boogafs_inode *inode = (struct boogafs_inode *) block;
-    uint32_t first_data_block = 1 + le32toh(sb->info.nr_ibitmap_blocks) +
-                                le32toh(sb->info.nr_dbitmap_blocks) +
-                                le32toh(sb->info.nr_itable_blocks); /* the first data block is right after the superblock, the inode bitmap, the data bitmap, and the inode table */
-    inode->i_mode = htole32(S_IFDIR | S_IRUSR | S_IRGRP | S_IROTH | S_IWUSR |
-                            S_IWGRP | S_IXUSR | S_IXGRP | S_IXOTH);
-    inode->i_uid = 0;
-    inode->i_gid = 0;
+    /* the first data block is right after the superblock, the inode bitmap, the data bitmap, and the inode table */
+    uint32_t first_data_block = 4;
+    inode->i_mode = htole32(S_IFDIR | 0755);
+    inode->i_uid = htole32(1000); /* currently uid 1000 represents user cs453, or the first user in this system. */
+    inode->i_gid = htole32(1000); /* gid 1000 is group cs453 */
     inode->i_size = htole32(BOOGAFS_BLOCK_SIZE);
-    inode->i_ctime = inode->i_atime = inode->i_mtime = htole32(0);
-    inode->i_blocks = htole32(1);
     inode->i_nlink = htole32(2);
-    inode->i_block[0] = htole32(first_data_block);
-
-    int ret = write(fd, block, BOOGAFS_BLOCK_SIZE); /* the first block is non zero, because we have to fill in the information about inode 0. */
+    inode->data_block = htole32(first_data_block);
+    lseek(fd, BOOGAFS_ROOT_INO * sizeof(struct boogafs_inode), SEEK_CUR);
+    int ret = write(fd, block, BOOGAFS_BLOCK_SIZE); /* the first block is non zero, because we have to fill in the information about inode 2. */
     if (ret != BOOGAFS_BLOCK_SIZE) {
         ret = -1;
         goto end;
     }
 
-    /* Reset inode table blocks to zero - the rest blocks of the inode table, at this moment should be 0. */
-    memset(block, 0, BOOGAFS_BLOCK_SIZE);
-    uint32_t i;
-    for (i = 1; i < sb->info.nr_itable_blocks; i++) {
-        ret = write(fd, block, BOOGAFS_BLOCK_SIZE);
-        if (ret != BOOGAFS_BLOCK_SIZE) {
-            ret = -1;
-            goto end;
-        }
-    }
+    /* in our very simple file system, there is only one block storing the inode table. */
+
     ret = 0;
 
     printf(
-        "inode table: wrote %d blocks\n"
+        "inode table: wrote 1 block(s)\n"
         "\tinode size = %ld bytes\n",
-        i, sizeof(struct boogafs_inode));
+        sizeof(struct boogafs_inode));
 
 end:
     free(block);
@@ -228,8 +180,33 @@ end:
 
 static int write_data_blocks(int fd, struct superblock *sb)
 {
-    /* FIXME: unimplemented */
-    return 0;
+    /* allocate a block for the root directory */
+    struct boogafs_dir_block *dblock = malloc(sizeof(struct boogafs_dir_block));
+    if (!dblock)
+        return -1;
+    memset(dblock, 0, sizeof(struct boogafs_dir_block));
+
+    /* first entry: . */
+    dblock->files[0].inode = 0;
+    strncpy(dblock->files[0].name, ".", BOOGAFS_FILENAME_LEN);
+
+    /* second entry: .. */
+    dblock->files[1].inode = 1000; /* it is not unknown at the time of creating the image, use 1000 temporarily */
+    strncpy(dblock->files[1].name, "..", BOOGAFS_FILENAME_LEN);
+
+    int ret = write(fd, dblock, sizeof(struct boogafs_dir_block));
+    if (ret != BOOGAFS_BLOCK_SIZE) {
+        ret = -1;
+        goto end;
+    }
+
+    ret = 0;
+
+    printf("data blocks: wrote 1 block(s): two entries for the root directory\n");
+
+end:
+    free(dblock);
+    return ret;
 }
 
 int main(int argc, char **argv)
@@ -268,7 +245,7 @@ int main(int argc, char **argv)
     }
 
     /* Check if image is large enough */
-    long int min_size = 64 * BOOGAFS_BLOCK_SIZE; /* the minimum size of our file system is 64blocks, i.e., 64*4KB = 256KB */
+    long int min_size = 6 * BOOGAFS_BLOCK_SIZE; /* the minimum size of our file system is 6 blocks, i.e., 6*4KB = 24KB */
     if (stat_buf.st_size < min_size) {
         fprintf(stderr, "File is not large enough (size=%ld, min size=%ld)\n",
                 stat_buf.st_size, min_size);
