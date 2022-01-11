@@ -2,7 +2,7 @@
 
 ## Overview
 
-In this project we will implement a very simple file system. This very simple file system's layout completely matches with the one described in the book chapter.
+In this assignment we will implement a very simple file system. This very simple file system's layout completely matches with the one described in the book chapter.
 
 ## Book References
 
