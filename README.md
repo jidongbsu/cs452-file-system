@@ -8,4 +8,4 @@ In this project we will implement a very simple file system. This very simple fi
 
 Read these chapters carefully in order to prepare yourself for this project.
 
-File System Implementation(https://pages.cs.wisc.edu/~remzi/OSTEP/file-implementation.pdf)
+[File System Implementation](https://pages.cs.wisc.edu/~remzi/OSTEP/file-implementation.pdf)
