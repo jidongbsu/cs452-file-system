@@ -62,14 +62,36 @@ Alternatively, you can use the command:
 
 ## Testing
 
+Before the test, run *make* to compile the files, which will generate the kernel module *audi.ko*, as well as an executable file *mkfs.audi*.
+
 To test the file system, 
 
 - we first create a file system image, which is a zeroed file:
 
 ```console
 [cs452@localhost cs452-file-system]$ dd if=/dev/zero of=test.img bs=4K count=64
+64+0 records in
+64+0 records out
+262144 bytes (262 kB) copied, 0.000861149 s, 304 MB/s
 ```
 As described in the book chapter, our file system has 64 blocks, and each block is 4KB.
+
+- we then create the file system layout (so that the above file system image will have the same layout as the chapter's **vsfs** example):
+
+```console
+[cs452@localhost cs452-file-system]$ ./mkfs.audi test.img 
+Superblock: (4096 bytes )
+	magic=0x12345678
+	s_blocks_count=64
+	s_inodes_count=80
+	s_free_inodes_count=78
+	s_free_blocks_count=55
+inode bitmap: wrote 1 block
+data bitmap: wrote 1 block
+inode table: wrote 5 blocks
+	inode size = 256 bytes
+data blocks: wrote 1 block: two entries for the root directory
+```
 
 - we then mount the file system onto the **test** folder - this folder is already included in the starter code.
 
