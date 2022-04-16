@@ -93,13 +93,27 @@ inode table: wrote 5 blocks
 data blocks: wrote 1 block: two entries for the root directory
 ```
 
+- next we install the kernel module **audi.ko** with the *insmod* command.
+
+```console
+[cs452@localhost test]$ sudo insmod audi.ko
+[sudo] password for cs452: 
+```
+
 - we then mount the file system onto the **test** folder - this folder is already included in the starter code.
 
 ```console
-[cs452@localhost cs452-file-system]$ sudo mount -o loop -t audifs test.img test
+[cs452@localhost cs452-file-system]$ sudo mount -o loop -t audi test.img test
 ```
 
 After the above step, you can now perform various supported file system operations inside the test folder.
+
+- after the test, we can unmount the file system with the *umount* command (yes, the command is called *umount*, not *unmount*), and then we can remove the kernel module **audi.ko** with the *rmmod* command.
+
+```console
+[cs452@localhost cs452-file-system]$ sudo umount test
+[cs452@localhost cs452-file-system]$ sudo rmmod audi
+```
 
 ## Expected Results
 
