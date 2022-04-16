@@ -67,14 +67,14 @@ To test the file system,
 - we first create a file system image, which is a zeroed file:
 
 ```console
-[cs452@localhost cs452-device-driver]$ dd if=/dev/zero of=test.img bs=4K count=64
+[cs452@localhost cs452-file-system]$ dd if=/dev/zero of=test.img bs=4K count=64
 ```
 As described in the book chapter, our file system has 64 blocks, and each block is 4KB.
 
 - we then mount the file system onto the **test** folder - this folder is already included in the starter code.
 
 ```console
-[cs452@localhost cs452-device-driver]$ sudo mount -o loop -t audifs test.img test
+[cs452@localhost cs452-file-system]$ sudo mount -o loop -t audifs test.img test
 ```
 
 After the above step, you can now perform various supported file system operations inside the test folder.
