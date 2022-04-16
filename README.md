@@ -80,17 +80,17 @@ As described in the book chapter, our file system has 64 blocks, and each block 
 
 ```console
 [cs452@localhost cs452-file-system]$ ./mkfs.audi test.img 
-Superblock: (4096 bytes )
+superblock: (4096 bytes )
 	magic=0x12345678
 	s_blocks_count=64
 	s_inodes_count=80
 	s_free_inodes_count=78
 	s_free_blocks_count=55
-inode bitmap: wrote 1 block
-data bitmap: wrote 1 block
+inode bitmap: wrote 1 block; initial inode bitmap is: 0xa000000000000000
+data bitmap: wrote 1 block; initial data bitmap is: 0xff80000000000000
 inode table: wrote 5 blocks
 	inode size = 256 bytes
-data blocks: wrote 1 block: two entries for the root directory
+data blocks: wrote 1 block: two entries ("." and "..") for the root directory
 ```
 
 - next we install the kernel module **audi.ko** with the *insmod* command.
