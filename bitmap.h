@@ -11,95 +11,84 @@
  *
  */
 
-#ifndef BOOGAFS_BITMAP_H
-#define BOOGAFS_BITMAP_H
+#ifndef AUDIFS_BITMAP_H
+#define AUDIFS_BITMAP_H
 
-#include <linux/bitmap.h>
-#include "booga.h"
+#include "audi.h"
+
+/* note this functions reports the bit index counting from right most (as 0).
+ * therefore for a number of 0xff0000000001ffff, this function will report bit 55. 
+ * this function returns 255 if all bits are already 1. */
+
+static unsigned char get_first_zero_bit(unsigned long long n)
+{
+
+	unsigned int ret = 0;
+	n = ~n;
+	while(n>0)
+	{
+		ret++;
+		n >>= 1;
+	}
+ 	return (ret-1);
+}
+
+/* this function will cause trouble if pass a bit index larger than the number of bits the integer has. */
+static inline void audi_set_bit(int nr, void *addr)
+{
+        asm("btsl %1,%0" : "+m" (*(unsigned long *)addr) : "Ir" (nr));
+}
 
 /*
- * Return the first bit we found and clear the the following `len` consecutive
- * free bit(s) (set to 1) in a given in-memory bitmap spanning over multiple
- * blocks. Return 0 if no enough free bit(s) were found (we assume that the
- * first bit is never free because of the superblock and the root inode, thus
- * allowing us to use 0 as an error value).
+ * return an unused inode number and mark it used.
+ * return 0 if no free inode was found.
  */
-static inline uint32_t get_first_free_bits(unsigned long *freemap,
-                                           unsigned long size,
-                                           uint32_t len)
+static inline unsigned int get_free_inode(struct audi_sb_info *sbi)
 {
-    uint32_t bit, prev = 0, count = 0;
-    for_each_set_bit (bit, freemap, size) {
-        if (prev != bit - 1)
-            count = 0;
-        prev = bit;
-        if (++count == len) {
-            bitmap_clear(freemap, bit - len + 1, len);
-            return bit - len + 1;
-        }
-    }
+    unsigned int ret = get_first_zero_bit(inode_bitmap);
+    if (ret != 255) {
+    	audi_set_bit(ret, &inode_bitmap);
+        sbi->s_free_inodes_count--;
+		return (63-ret); // again, the bit index returned by get_first_zero_bit is counting from the right most, yet we want to count from the left most.
+	}
     return 0;
 }
 
 /*
- * Return an unused inode number and mark it used.
- * Return 0 if no free inode was found.
+ * return a block number and mark it used.
+ * return 0 if no free block was found.
  */
-static inline uint32_t get_free_inode(struct boogafs_sb_info *sbi)
+static unsigned int get_free_block(struct audi_sb_info *sbi)
 {
-    uint32_t ret = get_first_free_bits(sbi->inode_bitmap, sbi->nr_inodes, 1);
-    if (ret)
-        sbi->nr_free_inodes--;
-    return ret;
-}
-
-/*
- * Return `len` unused block(s) number and mark it used.
- * Return 0 if no enough free block(s) were found.
- */
-static inline uint32_t get_free_blocks(struct boogafs_sb_info *sbi,
-                                       uint32_t len)
-{
-    uint32_t ret = get_first_free_bits(sbi->data_bitmap, sbi->nr_blocks, len);
-    if (ret)
-        sbi->nr_free_blocks -= len;
-    return ret;
-}
-
-
-/* Mark the `len` bit(s) from i-th bit in freemap as free (i.e. 1) */
-static inline int put_free_bits(unsigned long *freemap,
-                                unsigned long size,
-                                uint32_t i,
-                                uint32_t len)
-{
-    /* i is greater than freemap size */
-    if (i + len - 1 > size)
-        return -1;
-
-    bitmap_set(freemap, i, len);
-
+    uint64_t ret = get_first_zero_bit(data_bitmap);
+    if (ret != 255) {
+    	audi_set_bit(ret, &data_bitmap);
+        sbi->s_free_blocks_count--;
+		return (63-ret); // again, the bit index returned by get_first_zero_bit is counting from the right most, yet we want to count from the left most.
+	}
     return 0;
 }
 
-/* Mark an inode as unused */
-static inline void put_inode(struct boogafs_sb_info *sbi, uint32_t ino)
+/* mark an inode as unused */
+void put_inode(struct audi_sb_info *sbi, uint32_t ino)
 {
-    if (put_free_bits(sbi->inode_bitmap, sbi->nr_inodes, ino, 1))
-        return;
-
-    sbi->nr_free_inodes++;
+pr_info("ino is %d, inode bitmap was 0x%llx\n", ino, inode_bitmap);
+	/* clear bit ino and increment number of free inodes */
+	inode_bitmap &= ~(1ULL << (63-ino)); // again, we need 63- here because that's how we use our bitmap.
+    sbi->s_free_inodes_count++;
+pr_info("ino is %d, inode bitmap is 0x%llx\n", ino, inode_bitmap);
 }
 
-/* Mark len block(s) as unused */
-static inline void put_blocks(struct boogafs_sb_info *sbi,
-                              uint32_t bno,
-                              uint32_t len)
+/* mark a block as unused */
+void put_block(struct audi_sb_info *sbi, uint32_t bno)
 {
-    if (put_free_bits(sbi->data_bitmap, sbi->nr_blocks, bno, len))
-        return;
-
-    sbi->nr_free_blocks += len;
+pr_info("data bitmap was 0x%llx\n", data_bitmap);
+	/* clear bit bno and increment number of free blocks */
+	data_bitmap &= ~(1ULL << (63-bno)); // again, we need 63- here because that's how we use our bitmap.
+    sbi->s_free_blocks_count++;
+pr_info("data bitmap is 0x%llx\n", data_bitmap);
 }
 
-#endif /* BOOGAFS_BITMAP_H */
+#endif /* AUDIFS_BITMAP_H */
+
+/* vim: set ts=4: */

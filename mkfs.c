@@ -13,15 +13,16 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <inttypes.h> /* for uint64_t? */
 #include <sys/ioctl.h>
 #include <sys/stat.h>
 #include <unistd.h>
 #include <linux/fs.h>
-#include "booga.h"
+#include "audi.h"
 
 struct superblock {
-    struct boogafs_sb_info info;
-    char padding[4064]; /* Padding to match block size */
+    struct audi_sb_info info; /* 20 bytes */
+    char padding[4076]; /* Padding to match block size: 20+4076 = 4096 bytes = 4KB  */
 };
 
 /* Returns ceil(a/b) */
@@ -39,24 +40,18 @@ static struct superblock *write_superblock(int fd, struct stat *fstats)
     if (!sb)
         return NULL;
 
-    uint32_t nr_blocks = fstats->st_size / BOOGAFS_BLOCK_SIZE;
-    uint32_t nr_inodes = BOOGAFS_INODES_PER_BLOCK;
-    uint32_t nr_ibitmap_blocks = 1; /* reserve one block to store inode bitmap */
-    uint32_t nr_dbitmap_blocks = 1; /* reserve one block to store data bitmap */
-    uint32_t nr_itable_blocks = 1; /* reserve one block to store inode table */
+    uint32_t nr_blocks = fstats->st_size / AUDI_BLOCK_SIZE;
+    uint32_t nr_inodes = AUDI_INODES_PER_BLOCK * AUDI_INODE_BLOCKS; /* as the chapter shows, 5 blocks reserved for the inodes, thus it is 16*5=80 inodes. */
     uint32_t nr_data_blocks =
-        nr_blocks - 1 - nr_itable_blocks - nr_ibitmap_blocks - nr_dbitmap_blocks; /* 60 blocks */
+        nr_blocks - 8; /* as the chapter shows, 56 data blocks: 64 - 1 - 1 - 1 - 5 = 56 */
 
     memset(sb, 0, sizeof(struct superblock));
-    sb->info = (struct boogafs_sb_info){
-        .magic = htole32(BOOGAFS_MAGIC),
-        .nr_blocks = htole32(nr_blocks),
-        .nr_inodes = htole32(nr_inodes),
-        .nr_itable_blocks = htole32(nr_itable_blocks),
-        .nr_ibitmap_blocks = htole32(nr_ibitmap_blocks),
-        .nr_dbitmap_blocks = htole32(nr_dbitmap_blocks),
-        .nr_free_inodes = htole32(nr_inodes - 1), /* reserve one inode for the root inode? */
-        .nr_free_blocks = htole32(nr_data_blocks - 1), /* -1? because the first data block is for the root inode? */
+    sb->info = (struct audi_sb_info){
+        .s_magic = htole32(AUDI_MAGIC),
+        .s_blocks_count = htole32(nr_blocks),
+        .s_inodes_count = htole32(nr_inodes),
+        .s_free_inodes_count = htole32(nr_inodes - 2), /* reserve one inode for the root inode, and inode 0 in Linux indicates the inode is invalid, thus we can't use 0. */
+        .s_free_blocks_count = htole32(nr_data_blocks - 1), /* -1? because the first data block is for the root inode? */
     };
 
     int ret = write(fd, sb, sizeof(struct superblock));
@@ -66,44 +61,41 @@ static struct superblock *write_superblock(int fd, struct stat *fstats)
     }
 
     printf(
-        "Superblock: (%ld)\n"
+        "superblock: (%ld bytes )\n"
         "\tmagic=%#x\n"
-        "\tnr_blocks=%u\n"
-        "\tnr_inodes=%u (inode table=%u blocks)\n"
-        "\tnr_ibitmap_blocks=%u\n"
-        "\tnr_dbitmap_blocks=%u\n"
-        "\tnr_free_inodes=%u\n"
-        "\tnr_free_blocks=%u\n",
-        sizeof(struct superblock), sb->info.magic, sb->info.nr_blocks,
-        sb->info.nr_inodes, sb->info.nr_itable_blocks, sb->info.nr_ibitmap_blocks,
-        sb->info.nr_dbitmap_blocks, sb->info.nr_free_inodes,
-        sb->info.nr_free_blocks);
+        "\ts_blocks_count=%u\n"
+        "\ts_inodes_count=%u\n"
+        "\ts_free_inodes_count=%u\n"
+        "\ts_free_blocks_count=%u\n",
+        sizeof(struct superblock), sb->info.s_magic, sb->info.s_blocks_count,
+        sb->info.s_inodes_count, sb->info.s_free_inodes_count,
+        sb->info.s_free_blocks_count);
 
     return sb;
 }
 
 static int write_inode_bitmap(int fd, struct superblock *sb)
 {
-    char *block = malloc(BOOGAFS_BLOCK_SIZE);
+    char *block = malloc(AUDI_BLOCK_SIZE);
     if (!block)
         return -1;
 
-    uint64_t *ifree = (uint64_t *) block;
+    unsigned long long *ibitmap = (unsigned long long *) block;
 
     /* Set all bits to 1 */
-    memset(ifree, 0xff, BOOGAFS_BLOCK_SIZE);
+    memset(ibitmap, 0x00, AUDI_BLOCK_SIZE);
 
-    /* First ifree block, containing first used inode */
-    ifree[0] = htole64(0xfffffffffffffffd);
-    int ret = write(fd, ifree, BOOGAFS_BLOCK_SIZE);
-    if (ret != BOOGAFS_BLOCK_SIZE) {
+	/* a = 1010, 0xa000 0000 0000 0000 means 1010 0000 0000 0000 ....; we go from the left most bit. */
+    ibitmap[0] = htole64(0xa000000000000000); /* we understand it is wasteful to use one entire block, because all we need is just 64 bits. we use bit 2 for root inode, and bit 0 is reserved - not sure why, but it seems inode 0 is considered as invalid by the VFS? */
+    int ret = write(fd, ibitmap, AUDI_BLOCK_SIZE);
+    if (ret != AUDI_BLOCK_SIZE) {
         ret = -1;
         goto end;
     }
 
     ret = 0;
 
-    printf("inode bitmap: wrote 1 block(s)\n");
+    printf("inode bitmap: wrote 1 block; initial inode bitmap is: 0x%llx\n", *ibitmap);
 
 end:
     free(block);
@@ -113,26 +105,26 @@ end:
 
 static int write_data_bitmap(int fd, struct superblock *sb)
 {
-    char *block = malloc(BOOGAFS_BLOCK_SIZE);
+    char *block = malloc(AUDI_BLOCK_SIZE);
     if (!block)
         return -1;
 
-    uint64_t *bfree = (uint64_t *) block;
+    unsigned long long *dbitmap = (unsigned long long *) block;
 
     /* set all bits to 1 */
-    memset(bfree, 0xff, BOOGAFS_BLOCK_SIZE);
+    memset(dbitmap, 0x00, AUDI_BLOCK_SIZE);
 
-    /* First bfree block, containing first used blocks */
-    bfree[0] = htole64(0xffffffffffffffe0);
-    int ret = write(fd, bfree, BOOGAFS_BLOCK_SIZE);
-    if (ret != BOOGAFS_BLOCK_SIZE) {
+    /* the first 8 data blocks are already reserved. the 9th block also reserved for the root. ff8 means 1111 1111 1000, i.e., we have the leftmost 9 bits reserved. */
+    dbitmap[0] = htole64(0xff80000000000000);
+    int ret = write(fd, dbitmap, AUDI_BLOCK_SIZE); /* we only need 64 bits, but we still reserve and write one entire block. */
+    if (ret != AUDI_BLOCK_SIZE) {
         ret = -1;
         goto end;
     }
 
     ret = 0;
 
-    printf("data bitmap: wrote 1 block(s)\n");
+    printf("data bitmap: wrote 1 block; initial data bitmap is: 0x%llx\n", *dbitmap);
 end:
     free(block);
     return ret;
@@ -140,69 +132,72 @@ end:
 
 static int write_inode_table(int fd, struct superblock *sb)
 {
-    /* Allocate a zeroed block for inode table */
-    char *block = malloc(BOOGAFS_BLOCK_SIZE);
-    if (!block)
+    /* Allocate 5 zeroed blocks for the inode table */
+    char *blocks = malloc(AUDI_BLOCK_SIZE*AUDI_INODE_BLOCKS);
+    if (!blocks)
         return -1;
 
-    memset(block, 0, BOOGAFS_BLOCK_SIZE);
+    memset(blocks, 0, AUDI_BLOCK_SIZE);
 
     /* Root inode (inode 2) */
-    struct boogafs_inode *inode = (struct boogafs_inode *) block;
+    struct audi_inode *inode = ((struct audi_inode *) blocks)+2; /* move forward 2*256=512 bytes - so as to skip inode 0 and 1, and write inode 2. */
     /* the first data block is right after the superblock, the inode bitmap, the data bitmap, and the inode table */
-    uint32_t first_data_block = 4;
+    uint32_t first_data_block = 8; /* we start counting from 0 - as the chapter shows. */
+	/*FIXME: root inode isn't the first inode, what are we doing here? */
     inode->i_mode = htole32(S_IFDIR | 0755);
-    inode->i_uid = htole32(1000); /* currently uid 1000 represents user cs453, or the first user in this system. */
-    inode->i_gid = htole32(1000); /* gid 1000 is group cs453 */
-    inode->i_size = htole32(BOOGAFS_BLOCK_SIZE);
+    inode->i_uid = htole32(1000); /* currently uid 1000 represents user cs452, or the first user in this system. */
+    inode->i_gid = htole32(1000); /* gid 1000 is group cs452 */
+    inode->i_size = htole32(AUDI_BLOCK_SIZE); /* we assume every file/directory in this file system occupies one block, thus its size is always 4KB. */
     inode->i_nlink = htole32(2);
     inode->data_block = htole32(first_data_block);
-    lseek(fd, BOOGAFS_ROOT_INO * sizeof(struct boogafs_inode), SEEK_CUR);
-    int ret = write(fd, block, BOOGAFS_BLOCK_SIZE); /* the first block is non zero, because we have to fill in the information about inode 2. */
-    if (ret != BOOGAFS_BLOCK_SIZE) {
+    int ret = write(fd, blocks, AUDI_BLOCK_SIZE*AUDI_INODE_BLOCKS); /* write whatever in blocks into this file. the first block in inode table is non zero, because we have to fill in the information about inode 2. */
+    if (ret != AUDI_BLOCK_SIZE*AUDI_INODE_BLOCKS) {
         ret = -1;
         goto end;
     }
 
-    /* in our very simple file system, there is only one block storing the inode table. */
+    /* in our very simple file system, there are 5 blocks storing the inode table. */
 
     ret = 0;
 
     printf(
-        "inode table: wrote 1 block(s)\n"
+        "inode table: wrote 5 blocks\n"
         "\tinode size = %ld bytes\n",
-        sizeof(struct boogafs_inode));
+        sizeof(struct audi_inode));
 
 end:
-    free(block);
+    free(blocks);
     return ret;
 }
 
 static int write_data_blocks(int fd, struct superblock *sb)
 {
     /* allocate a block for the root directory */
-    struct boogafs_dir_block *dblock = malloc(sizeof(struct boogafs_dir_block));
+    struct audi_dir_block *dblock = malloc(sizeof(struct audi_dir_block));
     if (!dblock)
         return -1;
-    memset(dblock, 0, sizeof(struct boogafs_dir_block));
+    memset(dblock, 0, sizeof(struct audi_dir_block));
 
     /* first entry: . */
-    dblock->files[0].inode = 0;
-    strncpy(dblock->files[0].name, ".", BOOGAFS_FILENAME_LEN);
+    strncpy(dblock->files[0].name, ".", AUDI_FILENAME_LEN);
 
     /* second entry: .. */
-    dblock->files[1].inode = 1000; /* it is not unknown at the time of creating the image, use 1000 temporarily */
-    strncpy(dblock->files[1].name, "..", BOOGAFS_FILENAME_LEN);
+    strncpy(dblock->files[1].name, "..", AUDI_FILENAME_LEN);
 
-    int ret = write(fd, dblock, sizeof(struct boogafs_dir_block));
-    if (ret != BOOGAFS_BLOCK_SIZE) {
-        ret = -1;
-        goto end;
-    }
+	/* each dir block has 64 entries, 
+	 * the remaining entries (entry 2 to entry 63) do not matter
+	 * at this moment. */
 
-    ret = 0;
+	/* write whatever in dblock into this file */
+	int ret = write(fd, dblock, sizeof(struct audi_dir_block));
+	if (ret != AUDI_BLOCK_SIZE) {
+		ret = -1;
+		goto end;
+	}
 
-    printf("data blocks: wrote 1 block(s): two entries for the root directory\n");
+	ret = 0;
+
+	printf("data blocks: wrote 1 block: two entries (\".\" and \"..\") for the root directory\n");
 
 end:
     free(dblock);
@@ -244,11 +239,10 @@ int main(int argc, char **argv)
         stat_buf.st_size = blk_size;
     }
 
-    /* Check if image is large enough */
-    long int min_size = 6 * BOOGAFS_BLOCK_SIZE; /* the minimum size of our file system is 6 blocks, i.e., 6*4KB = 24KB */
-    if (stat_buf.st_size < min_size) {
-        fprintf(stderr, "File is not large enough (size=%ld, min size=%ld)\n",
-                stat_buf.st_size, min_size);
+    /* Check if image size is 256KB - 64 blocks, 4 KB each block, thus it is 64*4=256KB */
+    if (stat_buf.st_size != 64*4*1024) {
+        fprintf(stderr, "Please make sure your image size is %ld KB)\n",
+                stat_buf.st_size/1024);
         ret = EXIT_FAILURE;
         goto fclose;
     }
@@ -277,7 +271,7 @@ int main(int argc, char **argv)
         goto free_sb;
     }
 
-    /* Write inode store blocks (from block 1) */
+    /* Write inode table (from block 1) */
     ret = write_inode_table(fd, sb);
     if (ret) {
         perror("write_inode_table():");
@@ -300,3 +294,5 @@ fclose:
 
     return ret;
 }
+
+/* vim: set ts=4: */

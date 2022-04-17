@@ -1,13 +1,6 @@
-/**
+/*
  * super.c - in this file we implement functions to handle the superblock.
- *
- * This file is derived from simplefs.
- * Original Author: 
- *   Jim Huang <jserv.tw@gmail.com>
- *
- * One change is we don't use inode 0 for the root inode, instead we use inode 2, which is the same choice as in the ext2 file system.
- * Author:
- *   Jidong Xiao <jidongxiao@boisestate.edu>
+ * this file is mainly mimicking fs/ext2/super.c.
  */
 
 #define pr_fmt(fmt) KBUILD_MODNAME ": " fmt
@@ -19,64 +12,65 @@
 #include <linux/slab.h>
 #include <linux/statfs.h>
 
-#include "booga.h"
+#include "audi.h"
 
-static struct kmem_cache *boogafs_inode_cache;
-
-int boogafs_init_inodecache(void)
+/* either: fill_super()-> audi_iget() -> iget_locked() -> alloc_inode(sb) -> sb->s_op->alloc_inode(sb) 
+ * or: fill_super() -> audi_iget() -> new_inode() -> new_inode_pseudo() -> alloc_inode(sb) -> sb->s_op->alloc_inode(sb)
+ */
+static struct inode *audi_alloc_inode(struct super_block *sb)
 {
-    boogafs_inode_cache = kmem_cache_create(
-        "boogafs_cache", sizeof(struct boogafs_inode_info), 0, 0, NULL);
-    if (!boogafs_inode_cache)
-        return -ENOMEM;
-    return 0;
+	struct audi_inode_info *ai = (struct audi_inode_info *)kmem_cache_alloc(audi_inode_cachep, GFP_KERNEL);
+	if (!ai)
+		return NULL;
+
+	/* not sure why, but without this line the kernel crashes when mounting the file system. */
+	inode_init_once(&ai->vfs_inode);
+	/* note that we allocate memory for a struct audi_inode_info pointer,
+	 * but we return a struct inode pointer. 
+	 * plus, here we only allocate memory but we do not initialize the inode, ext2_alloc_inode() does the same. */
+    return &ai->vfs_inode;
 }
 
-void boogafs_destroy_inodecache(void)
+static void audi_destroy_inode(struct inode *inode)
 {
-    kmem_cache_destroy(boogafs_inode_cache);
+	struct audi_inode_info *ai = AUDI_INODE(inode);
+	pr_info("destroy inode %ld during unmount\n", inode->i_ino);
+	kmem_cache_free(audi_inode_cachep, ai);
 }
 
-static struct inode *boogafs_alloc_inode(struct super_block *sb)
-{
-    struct boogafs_inode_info *ci =
-        kmem_cache_alloc(boogafs_inode_cache, GFP_KERNEL);
-    if (!ci)
-        return NULL;
+/* put_super: called when the VFS wishes to free the superblock (i.e. unmount);
+ * but what memory do we need to release?? */
+//static void audi_put_super(struct super_block *sb)
+//{
+//}
 
-    pr_info("this function is called during mount\n"); /* either: fill_super()-> boogafs_iget() -> iget_locked() -> alloc_inode(sb) -> sb->s_op->alloc_inode(sb) 
-                                                          or: fill_super() -> boogfs_iget() -> new_inode() -> new_inode_pseudo() -> alloc_inode(sb) -> sb->s_op->alloc_inode(sb)
-                                                        */
-    inode_init_once(&ci->vfs_inode);
-    return &ci->vfs_inode;
-}
-
-static void boogafs_destroy_inode(struct inode *inode)
+/* this method is called when the VFS needs to write an
+ * inode to disc. The second parameter indicates whether the write
+ * should be synchronous or not, not all filesystems check this flag.
+ * e.g., this function gets called at runtime, likely whenever we write something into the inode, 
+ * and mark it dirty. for example, when "touch abc", a few seconds later, this function gets called;
+ * when "rm -f abc", a few seconds later, this function also gets called. */
+static int audi_write_inode(struct inode *inode, struct writeback_control *wbc)
 {
-    struct boogafs_inode_info *ci = BOOGAFS_INODE(inode);
-    kmem_cache_free(boogafs_inode_cache, ci);
-}
-
-static int boogafs_write_inode(struct inode *inode,
-                                struct writeback_control *wbc)
-{
-    struct boogafs_inode *disk_inode;
-    struct boogafs_inode_info *ci = BOOGAFS_INODE(inode);
+    struct audi_inode *disk_inode;
+    struct audi_inode_info *ci = AUDI_INODE(inode);
     struct super_block *sb = inode->i_sb;
-    struct boogafs_sb_info *sbi = BOOGAFS_SB(sb);
+    struct audi_sb_info *sbi = AUDI_SB(sb);
     struct buffer_head *bh;
     uint32_t ino = inode->i_ino;
-    uint32_t inode_block = (ino / BOOGAFS_INODES_PER_BLOCK) + 1;
-    uint32_t inode_shift = ino % BOOGAFS_INODES_PER_BLOCK;
+    uint32_t inode_block = (ino / AUDI_INODES_PER_BLOCK) + 3; /* inode table starts at block 3 */
+    uint32_t inode_shift = ino % AUDI_INODES_PER_BLOCK;
 
-    if (ino >= sbi->nr_inodes)
+    pr_info("writing inode %d at block %d\n", ino, inode_block);
+    if (ino >= sbi->s_inodes_count)
         return 0;
 
+	/* read the inode from the disk, update it, and write back to disk. */
     bh = sb_bread(sb, inode_block);
     if (!bh)
         return -EIO;
 
-    disk_inode = (struct boogafs_inode *) bh->b_data;
+    disk_inode = (struct audi_inode *) bh->b_data;
     disk_inode += inode_shift;
 
     /* update the mode using what the generic inode has */
@@ -93,243 +87,221 @@ static int boogafs_write_inode(struct inode *inode,
     mark_buffer_dirty(bh);
     sync_dirty_buffer(bh);
     brelse(bh);
+    pr_info("writing inode finished\n");
 
     return 0;
 }
 
-static void boogafs_put_super(struct super_block *sb)
+/* this function is called when umount the file system,
+ * and this is the moment when the super block on disk will be updated,
+ * and the bitmaps will be updated on disk. */
+static int audi_sync_fs(struct super_block *sb, int wait)
 {
-    struct boogafs_sb_info *sbi = BOOGAFS_SB(sb);
-    if (sbi) {
-        kfree(sbi->inode_bitmap);
-        kfree(sbi->data_bitmap);
-        kfree(sbi);
-    }
+	struct audi_sb_info *sbi = AUDI_SB(sb);
+	struct audi_sb_info *disk_sb;
+	struct buffer_head *bh;
+	unsigned long long *bitmap;
+
+	pr_info("sync fs is called\n");
+	/* flush superblock, which is block 0 */
+	bh = sb_bread(sb, 0);
+	if (!bh)
+	return -EIO;
+
+	disk_sb = (struct audi_sb_info *) bh->b_data;
+
+	disk_sb->s_blocks_count = sbi->s_blocks_count;
+	disk_sb->s_inodes_count = sbi->s_inodes_count;
+	disk_sb->s_free_inodes_count = sbi->s_free_inodes_count;
+	disk_sb->s_free_blocks_count = sbi->s_free_blocks_count;
+
+	mark_buffer_dirty(bh);
+	if (wait)
+		sync_dirty_buffer(bh);
+	brelse(bh);
+
+	/* flush inode bitmap, which is block 1 */
+	bh = sb_bread(sb, 1);
+	if (!bh)
+		return -EIO;
+
+	/* turns out this pointer (bitmap) is needed. 
+	 * if we just assign inode_bitmap to *bh->b_data, it won't work. */
+	pr_info("sync fs: updating inode bitmap to 0x%llx\n", inode_bitmap);
+	bitmap = (unsigned long long *) bh->b_data;
+	*bitmap = inode_bitmap;
+
+	mark_buffer_dirty(bh);
+	if (wait)
+		sync_dirty_buffer(bh);
+	brelse(bh);
+
+	pr_info("sync fs: updating data bitmap to 0x%llx\n", data_bitmap);
+	/* flush data bitmap, which is block 2 */
+	bh = sb_bread(sb, 2);
+	if (!bh)
+		return -EIO;
+
+	bitmap = (unsigned long long *) bh->b_data;
+	*bitmap = data_bitmap;
+
+	mark_buffer_dirty(bh);
+	if (wait)
+		sync_dirty_buffer(bh);
+	brelse(bh);
+
+	pr_info("sync fs finished\n");
+	return 0;
 }
 
-static int boogafs_sync_fs(struct super_block *sb, int wait)
-{
-    struct boogafs_sb_info *sbi = BOOGAFS_SB(sb);
-    struct boogafs_sb_info *disk_sb;
-    int i;
-
-    /* Flush superblock */
-    struct buffer_head *bh = sb_bread(sb, 0);
-    if (!bh)
-        return -EIO;
-
-    disk_sb = (struct boogafs_sb_info *) bh->b_data;
-
-    disk_sb->nr_blocks = sbi->nr_blocks;
-    disk_sb->nr_inodes = sbi->nr_inodes;
-    disk_sb->nr_itable_blocks = sbi->nr_itable_blocks;
-    disk_sb->nr_ibitmap_blocks = sbi->nr_ibitmap_blocks;
-    disk_sb->nr_dbitmap_blocks = sbi->nr_dbitmap_blocks;
-    disk_sb->nr_free_inodes = sbi->nr_free_inodes;
-    disk_sb->nr_free_blocks = sbi->nr_free_blocks;
-
-    mark_buffer_dirty(bh);
-    if (wait)
-        sync_dirty_buffer(bh);
-    brelse(bh);
-
-    /* Flush free inodes bitmask */
-    for (i = 0; i < sbi->nr_ibitmap_blocks; i++) {
-        int idx = sbi->nr_itable_blocks + i + 1;
-
-        bh = sb_bread(sb, idx);
-        if (!bh)
-            return -EIO;
-
-        memcpy(bh->b_data, (void *) sbi->inode_bitmap + i * BOOGAFS_BLOCK_SIZE,
-               BOOGAFS_BLOCK_SIZE);
-
-        mark_buffer_dirty(bh);
-        if (wait)
-            sync_dirty_buffer(bh);
-        brelse(bh);
-    }
-
-    /* Flush free blocks bitmask */
-    for (i = 0; i < sbi->nr_dbitmap_blocks; i++) {
-        int idx = sbi->nr_itable_blocks + sbi->nr_ibitmap_blocks + i + 1;
-
-        bh = sb_bread(sb, idx);
-        if (!bh)
-            return -EIO;
-
-        memcpy(bh->b_data, (void *) sbi->data_bitmap + i * BOOGAFS_BLOCK_SIZE,
-               BOOGAFS_BLOCK_SIZE);
-
-        mark_buffer_dirty(bh);
-        if (wait)
-            sync_dirty_buffer(bh);
-        brelse(bh);
-    }
-
-    return 0;
-}
-
-static int boogafs_statfs(struct dentry *dentry, struct kstatfs *stat)
+/* this function is called when the VFS needs to get filesystem statistics. 
+ * either df command or the statfs() system call will trigger this function call. 
+ * at first df -h should show that 36KB are used, because of the 8 reserved blocks and 1 block for root. */
+static int audi_statfs(struct dentry *dentry, struct kstatfs *stat)
 {
     struct super_block *sb = dentry->d_sb;
-    struct boogafs_sb_info *sbi = BOOGAFS_SB(sb);
+    struct audi_sb_info *sbi = AUDI_SB(sb);
 
-    stat->f_type = BOOGAFS_MAGIC;
-    stat->f_bsize = BOOGAFS_BLOCK_SIZE;
-    stat->f_blocks = sbi->nr_blocks;
-    stat->f_bfree = sbi->nr_free_blocks;
-    stat->f_bavail = sbi->nr_free_blocks;
-    stat->f_files = sbi->nr_inodes - sbi->nr_free_inodes;
-    stat->f_ffree = sbi->nr_free_inodes;
-    stat->f_namelen = BOOGAFS_FILENAME_LEN;
+    pr_info("statfs is called\n");
+    stat->f_type = AUDI_MAGIC;
+    stat->f_bsize = AUDI_BLOCK_SIZE;
+    stat->f_blocks = sbi->s_blocks_count; // this is the maximum.
+    stat->f_bfree = sbi->s_free_blocks_count; // this is what's remaining.
+    stat->f_bavail = sbi->s_free_blocks_count;	// we consider f_bfree and f_bavail as the same.
+    stat->f_files = sbi->s_inodes_count - sbi->s_free_inodes_count;
+    stat->f_ffree = sbi->s_free_inodes_count;
+    stat->f_namelen = AUDI_FILENAME_LEN;
 
     return 0;
 }
 
-static struct super_operations boogafs_super_ops = {
-    .put_super = boogafs_put_super,
-    .alloc_inode = boogafs_alloc_inode,
-    .destroy_inode = boogafs_destroy_inode,
-    .write_inode = boogafs_write_inode,
-    .sync_fs = boogafs_sync_fs,
-    .statfs = boogafs_statfs,
+static const struct super_operations audi_super_ops = {
+//    .put_super = audi_put_super,
+    .alloc_inode = audi_alloc_inode,
+    .destroy_inode = audi_destroy_inode,
+    .write_inode = audi_write_inode,
+    .sync_fs = audi_sync_fs,
+    .statfs = audi_statfs,
 };
 
-/* Fill the struct superblock from partition superblock */
-int boogafs_fill_super(struct super_block *sb, void *data, int silent)
+/* this function will be called when mounting the file system.
+ * this function reads the superblock information from disk, and fill the struct super_block - this structure is defined in include/linux/fs.h.
+ * if successful, return 0; 
+ * when this function returns, the kernel expects sb to be filled with content, otherwise the kernel will crash - 
+ * but some fields of sb is already filled prior to enter into this function, such as s_id?
+ * the ext2 ext2_fill_super() calls get_sb_block() to get the super block number, we do not call that, as we know our superblock is located at block 0.
+ * also, ext2 defines both struct ext2_sb_info and struct ext2_super_block, but we only need one. */
+int audi_fill_super(struct super_block *sb, void *data, int silent)
 {
-    struct buffer_head *bh = NULL;
-    struct boogafs_sb_info *csb = NULL;
-    struct boogafs_sb_info *sbi = NULL;
-    struct inode *root_inode = NULL;
-    int ret = 0, i;
-
+	struct buffer_head * bh;
+	struct audi_sb_info * sbi;
+	/* representing the root inode */
+	struct inode *root;
+	long ret = -EINVAL;
+	pr_info("file system mounted at %s\n", sb->s_id);
     pr_info("fill super block\n");
-    /* Init sb */
-    sb->s_magic = BOOGAFS_MAGIC;
-    sb_set_blocksize(sb, BOOGAFS_BLOCK_SIZE); /* set sb->s_blocksize to BOOGAFS_BLOCK_SIZE, which is 4KB, as defined in booga.h */
-    sb->s_maxbytes = BOOGAFS_MAX_FILESIZE; /* as of now, we only use 12 direct pointers, thus the max file size is 12*4K=48KB */
-    sb->s_op = &boogafs_super_ops; /* install super block operation callbacks, including put_super, alloc_inode, destroy_inode, write_inode, sync_fc, statfs. */
 
-    pr_info("fill super checker 1\n");
-    /* Read sb from disk */
-    bh = sb_bread(sb, 0); /* read block 0, which in our case is the super block, from the disk */
-    if (!bh)
-        return -EIO;
+	/* read block 0, as that's our superblock; and we do not need to allocate memory for bh, 
+	 * and sb_bread() reads the block and stores the data in bh->b_data, and the block size is stored in bh->b_size. */
+	if (!(bh = sb_bread(sb, 0))) {
+		pr_info("error: unable to read superblock");
+		goto failed_sbi;
+	}
 
-    pr_info("fill super checker 2.0\n");
-    csb = (struct boogafs_sb_info *) bh->b_data; /* sb_bread() reads the block and stores the data in bh->b_data */
+	/* after this line, the super block information is now stored in the addressed pointed to by sbi,
+	 * but this function audi_fill_super() aims to fill everything into sb. note we do not need to allocate memory for sbi. 
+	 * FIXME: but then how do we free the memory?? */
+	sbi = (struct audi_sb_info *) ((char *)bh->b_data);
 
-    pr_info("fill super checker 2.1\n");
-    /* Check magic number */
-    if (csb->magic != sb->s_magic) { /* both struct boogafs_sb_info and struct super_block have this magic field */
-        pr_err("Wrong magic number\n");
-        ret = -EINVAL;
-        goto release;
-    }
+	/* in struct super_block, there is "void  *s_fs_info;" commented as "filesystem private info". 
+	 * this line must be after the above line, which sets sbi. */
+	sb->s_fs_info = sbi;
 
-    pr_info("fill super checker 3\n");
-    /* Alloc sb_info */
-    sbi = kzalloc(sizeof(struct boogafs_sb_info), GFP_KERNEL);
-    if (!sbi) {
-        ret = -ENOMEM;
-        goto release;
-    }
+	/* le32_to_cpu() converts a 32-bit little-endian integer to its 32-bit representation on the current CPU. 
+	 * ext2 uses a 16-bit magic number 0xEF53, but we use a 32-bit magic number, the s_magic is an unsigned long variable. */
+	sb->s_magic = le32_to_cpu(sbi->s_magic);
+	if (sb->s_magic != AUDI_MAGIC)
+		goto cantfind_audi;
 
-    sbi->magic = csb->magic;
-    sbi->nr_blocks = csb->nr_blocks; /* whatever we read from the disk is now stored in csb, and we then copy each of its field into our sbi struct, which is a pointer points to some memory. */
-    sbi->nr_inodes = csb->nr_inodes;
-    sbi->nr_itable_blocks = csb->nr_itable_blocks;
-    sbi->nr_ibitmap_blocks = csb->nr_ibitmap_blocks;
-    sbi->nr_dbitmap_blocks = csb->nr_dbitmap_blocks;
-    sbi->nr_free_inodes = csb->nr_free_inodes;
-    sbi->nr_free_blocks = csb->nr_free_blocks;
-    sb->s_fs_info = sbi; /* in struct super_block, there is "void  *s_fs_info;" commented as "filesystem private info" */
+	/* set sb->s_blocksize to AUDI_BLOCK_SIZE, which is 4KB, as defined in audi.h. 
+	 * question: do we need to call this sb_set_blocksize(sb, AUDI_BLOCK_SIZE);? */
+	sb->s_blocksize = AUDI_BLOCK_SIZE;
+	if (sb->s_blocksize != bh->b_size) {
+		if (!silent)
+			pr_info("error: unsupported blocksize");
+		goto failed_mount;
+	}
 
+	sb->s_maxbytes = AUDI_MAX_FILESIZE; /* as of now, we only use 1 direct pointer, which points to one block, thus the max file size is 4KB */
+	sb->s_op = &audi_super_ops;
     brelse(bh); /* decrement a buffer_head's reference count */
 
-    pr_info("fill super checker 4\n");
-    /* Alloc and copy inode_bitmap */
-    sbi->inode_bitmap =
-        kzalloc(sbi->nr_ibitmap_blocks * BOOGAFS_BLOCK_SIZE, GFP_KERNEL);
-    if (!sbi->inode_bitmap) {
-        ret = -ENOMEM;
-        goto free_sbi;
-    }
+	/* read inode_bitmap, ext2 doesn't do it here because they have a bitmap for each block group, we only have one block group. */
+	/* in audi file system, the inode bitmap is right after the super block, thus it's block 1. */
+	bh = sb_bread(sb, 1);
+	if (!bh) {
+		ret = -EIO;
+		goto failed_sbi;
+	}
 
-    pr_info("fill super checker 5\n");
-    for (i = 0; i < sbi->nr_ibitmap_blocks; i++) {
-        /* int idx = sbi->nr_itable_blocks + i + 1; */
-        int idx = i + 1; /* unlike simplefs, in boogafs, the inode bitmap is right after the super block) */
+	inode_bitmap = *(unsigned long long *)(bh->b_data);
+	pr_info("inode bitmap is 0x%llx\n", inode_bitmap);
+	brelse(bh); /* decrement a buffer_head's reference count */
 
-        bh = sb_bread(sb, idx);
-        if (!bh) {
-            ret = -EIO;
-            goto free_ifree;
-        }
+    /* read inode_bitmap, ext2 doesn't do it here because they have a bitmap for each block group, we only have one block group. */
+    /* in audi file system, the data bitmap block is right after the inode bitmap block, thus it's block 2. */
+	bh = sb_bread(sb, 2);
+	if (!bh) {
+		ret = -EIO;
+		goto failed_sbi;
+	}
+	data_bitmap = *(unsigned long long *)(bh->b_data);
+	/* the below line should print 0x1ff, 
+	 * as that's our initial data bitmap, 9 blocks reserved already. */
+	pr_info("data bitmap is 0x%llx\n", data_bitmap);
+	brelse(bh); /* decrement a buffer_head's reference count */
 
-        memcpy((void *) sbi->inode_bitmap + i * BOOGAFS_BLOCK_SIZE, bh->b_data,
-               BOOGAFS_BLOCK_SIZE);
+	/* create root inode: create means create its data structure in the memory, 
+  	 * as opposed to on disk - the root inode is already existing on the disk, 
+  	 * created when we initialize the image with mkfs. inode number can not be zero: it seems that VFS considers 0 as an invalid inode number; thus here we use 2. */
+	pr_info("create root inode...\n");
+	root = audi_iget(sb, AUDI_ROOT_INO);
+	if (IS_ERR(root)) {
+		ret = PTR_ERR(root);
+		goto failed_sbi;
+	}
+	/* root inode must be representing a directory. its size in bytes can't be 0. */
+	if (!S_ISDIR(root->i_mode) || !root->i_size) {
+		iput(root);
+		pr_info("error: corrupt root inode");
+		goto failed_sbi;
+	}
 
-        brelse(bh);
-    }
-
-    pr_info("fill super checker 6\n");
-    /* Alloc and copy data_bitmap */
-    sbi->data_bitmap =
-        kzalloc(sbi->nr_dbitmap_blocks * BOOGAFS_BLOCK_SIZE, GFP_KERNEL);
-    if (!sbi->data_bitmap) {
-        ret = -ENOMEM;
-        goto free_ifree;
-    }
-
-    pr_info("fill super checker 7\n");
-    for (i = 0; i < sbi->nr_dbitmap_blocks; i++) {
-        /* int idx = sbi->nr_itable_blocks + sbi->nr_ibitmap_blocks + i + 1; */
-        int idx = sbi->nr_ibitmap_blocks + i + 1; /* unlike simplefs, in boogafs, the data bitmap is right after the inode bitmap block */
-
-        bh = sb_bread(sb, idx);
-        if (!bh) {
-            ret = -EIO;
-            goto free_bfree;
-        }
-
-        memcpy((void *) sbi->data_bitmap + i * BOOGAFS_BLOCK_SIZE, bh->b_data,
-               BOOGAFS_BLOCK_SIZE);
-
-        brelse(bh);
-    }
-
-    pr_info("create root inode...\n");
-    /* Create root inode */
-    root_inode = boogafs_iget(sb, BOOGAFS_ROOT_INO); /* inode number can not be zero: it seems that VFS consider 0 as an invalid inode number; thus here we use 2. */
-    if (IS_ERR(root_inode)) {
-        ret = PTR_ERR(root_inode);
-        goto free_bfree;
-    }
-    pr_info("init root inode...\n");
-    inode_init_owner(root_inode, NULL, root_inode->i_mode);
-    sb->s_root = d_make_root(root_inode);
-    if (!sb->s_root) {
-        ret = -ENOMEM;
-        goto iput;
-    }
+	pr_info("init root inode...\n");
+	/* allocate the root dentry. struct super_block is defined in include/linux/fs.h, 
+	 * it has a field called "struct dentry * s_root". d_make_root()->__d_alloc() to allocate a dentry:
+	 * dentry = kmem_cache_alloc(dentry_cache, GFP_KERNEL);
+	 * once a dentry is returned, then d_make_root() calls d_instantiate() to fill in inode information for this dentry.
+	 * it looks like for root directory, its dentry d_iname is "/", and d_name.len is 1. */
+	sb->s_root = d_make_root(root);
+	if (!sb->s_root) {
+		pr_info("error: get root inode failed");
+		ret = -ENOMEM;
+		goto failed_sbi;
+	}
 
     pr_info("super block filled\n");
 
     return 0;
-
-iput:
-    iput(root_inode);
-free_bfree:
-    kfree(sbi->data_bitmap);
-free_ifree:
-    kfree(sbi->inode_bitmap);
-free_sbi:
-    kfree(sbi);
-release:
-    brelse(bh);
-
-    return ret;
+cantfind_audi:
+	if (!silent)
+		/* it appears that s_id gives the name of the mounting path? */
+		pr_info("error: can't find an audi filesystem on dev %s.", sb->s_id);
+failed_mount:
+	brelse(bh);
+failed_sbi:
+	sb->s_fs_info = NULL;
+	return ret;
 }
+
+/* vim: set ts=4: */
