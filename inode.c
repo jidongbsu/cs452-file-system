@@ -195,17 +195,15 @@ put_ino:
 	return ERR_PTR(ret);
 }
 
-static int audi_create(struct inode *dir,
-                           struct dentry *dentry,
-                           umode_t mode,
-                           bool excl)
+static int audi_create(struct inode *dir, struct dentry *dentry, umode_t mode, bool excl)
 {
-    return 0;
+	struct inode *inode;
+	/* get a new free inode */
+	inode = audi_new_inode(dir, mode);
+	return 0;
 }
 
-static struct dentry *audi_lookup(struct inode *dir,
-                                      struct dentry *dentry,
-                                      unsigned int flags)
+static struct dentry *audi_lookup(struct inode *dir, struct dentry *dentry, unsigned int flags)
 {
     return NULL;
 }
@@ -215,9 +213,7 @@ static int audi_unlink(struct inode *dir, struct dentry *dentry)
     return 0;
 }
 
-static int audi_mkdir(struct inode *dir,
-                          struct dentry *dentry,
-                          umode_t mode)
+static int audi_mkdir(struct inode *dir, struct dentry *dentry, umode_t mode)
 {
     return 0;
 }
@@ -228,8 +224,8 @@ static int audi_rmdir(struct inode *dir, struct dentry *dentry)
 }
 
 const struct inode_operations audi_dir_inode_ops = {
-	.lookup = audi_lookup, /* without this line, ls -a will not show the . and .. */
 	.create = audi_create,
+	.lookup = audi_lookup, /* without this line, ls -a will not show the . and .. */
 	.unlink = audi_unlink,
 	.mkdir = audi_mkdir,
 	.rmdir = audi_rmdir,
