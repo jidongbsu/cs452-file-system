@@ -16,8 +16,8 @@
 struct inode *audi_iget(struct super_block *sb, unsigned long ino)
 {
 	struct inode *inode = NULL;
-	struct audi_inode *cinode = NULL;
-	struct audi_inode_info *ci = NULL;
+	struct audi_inode *ainode = NULL;
+	struct audi_inode_info *ai = NULL;
 	struct audi_sb_info *sbi = AUDI_SB(sb);
 	struct buffer_head *bh = NULL;
 	/* inode_blocks: which block this inode is located on. 
@@ -58,15 +58,15 @@ struct inode *audi_iget(struct super_block *sb, unsigned long ino)
 	 * we are reading a block belonging to the inode table, 
 	 * we know the block we just read contains many inodes. so we start from the first inode, 
 	 * and move forward to that desired target inode. */
-	cinode = (struct audi_inode *) bh->b_data;
-	cinode += inode_shift;
+	ainode = (struct audi_inode *) bh->b_data;
+	ainode += inode_shift;
 
 	inode->i_sb = sb;
 
-	inode->i_mode = le32_to_cpu(cinode->i_mode);
-	i_uid_write(inode, le32_to_cpu(cinode->i_uid));
-	i_gid_write(inode, le32_to_cpu(cinode->i_gid));
-	inode->i_size = le32_to_cpu(cinode->i_size);
+	inode->i_mode = le32_to_cpu(ainode->i_mode);
+	i_uid_write(inode, le32_to_cpu(ainode->i_uid));
+	i_gid_write(inode, le32_to_cpu(ainode->i_gid));
+	inode->i_size = le32_to_cpu(ainode->i_size);
 	inode->i_mtime = inode->i_atime = inode->i_ctime = CURRENT_TIME;
 	inode->i_mapping->a_ops = &audi_aops;
 	pr_info("register audi_aops\n");
@@ -87,11 +87,11 @@ struct inode *audi_iget(struct super_block *sb, unsigned long ino)
 
 	/* see how alloc_inode() works: we allocate memory for a struct audi_inode, 
 	 * but the VFS uses struct inode; so getting one from the other is frequently happening. */
-	ci = AUDI_INODE(inode);
+	ai = AUDI_INODE(inode);
 	/* struct inode is more generic, it doesn't track data_block, which is a pointer, 
 	 * but struct audi_inode does track, because this pointer is file system specific,
 	 * not every file system has such a pointer. */
-	ci->data_block = le32_to_cpu(cinode->data_block);
+	ai->data_block = le32_to_cpu(ainode->data_block);
 
 	/* after sb_bread, once the information is obtained, we always need to call brelse. */
 	brelse(bh);
@@ -113,7 +113,7 @@ failed:
 static struct inode *audi_new_inode(struct inode *dir, mode_t mode)
 {
     struct inode *inode;
-    struct audi_inode_info *ci;
+    struct audi_inode_info *ai;
     struct super_block *sb;
     struct audi_sb_info *sbi;
     uint32_t ino, bno;
@@ -149,7 +149,7 @@ static struct inode *audi_new_inode(struct inode *dir, mode_t mode)
         goto put_ino;
     }
 
-    ci = AUDI_INODE(inode);
+    ai = AUDI_INODE(inode);
 
     /* get a free block for this new inode's index */
 	/* FIXME: do we really need to do this when the newly created file is just an empty file? 
@@ -168,14 +168,14 @@ static struct inode *audi_new_inode(struct inode *dir, mode_t mode)
 	/* FIXME: haven't we already initialized inode in the above iget() function? */
     inode_init_owner(inode, dir, mode);
     if (S_ISDIR(mode)) {
-		ci->data_block = bno;
+		ai->data_block = bno;
 		inode->i_size = AUDI_BLOCK_SIZE;
 		inode->i_op = &audi_dir_inode_ops;
 		inode->i_fop = &audi_dir_ops;
 		set_nlink(inode, 2); /* . and .. */
 		pr_info("register audi_dir_ops\n");
     } else if (S_ISREG(mode)) {
-		ci->data_block = bno;
+		ai->data_block = bno;
 		inode->i_size = 0;
 		inode->i_op = &audi_file_inode_ops;
 		inode->i_fop = &audi_file_ops;
