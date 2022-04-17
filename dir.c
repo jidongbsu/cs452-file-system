@@ -1,11 +1,6 @@
 /**
  * dir.c - in this file we implement directory handlers.
  *
- * This file is derived from simplefs.
- * Original Author: 
- *   Jim Huang <jserv.tw@gmail.com>
- *
- * This modified version allows audi_iterate to be called when users run "ls -l" in the file system.
  * Author:
  *   Jidong Xiao <jidongxiao@boisestate.edu>
  */

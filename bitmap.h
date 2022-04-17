@@ -1,11 +1,6 @@
 /**
  * bitmap.h - header file
  *
- * This file is derived from simplefs.
- * Original Author: 
- *   Jim Huang <jserv.tw@gmail.com>
- *
- * This modified version is more like the very simple file system as described in the book "operating systems: three easy pieces".
  * Author:
  *   Jidong Xiao <jidongxiao@boisestate.edu>
  *
