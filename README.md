@@ -29,17 +29,23 @@ to be added.
 
 The starter code looks like this:
 
+```console
+[cs452@localhost cs452-file-system]$ ls
+audi.h  audi_main.c  bitmap.h  dir.c  file.c  inode.c  Makefile  mkfs.c  README.md  super.c  test
+```
+
+You will be completing the inode.c file.
+
 ## Functions You Need to Implement
 
-Here are the prototypes of the functions that you need to implement in toyota.c.
+Here are the prototypes of the functions that you need to implement in inode.c.
 
 ```c
-static int toyota_open (struct inode *inode, struct file *filp);
-static int toyota_release (struct inode *inode, struct file *filp);
-static ssize_t toyota_read (struct file *filp, char *buf, size_t count, loff_t *f_pos);
-static ssize_t toyota_write (struct file *filp, const char *buf, size_t count, loff_t *f_pos);
-static int __init toyota_init(void);
-static void __exit toyota_exit(void);
+static int audi_create(struct inode *dir, struct dentry *dentry, umode_t mode, bool excl);
+static struct dentry *audi_lookup(struct inode *dir, struct dentry *dentry, unsigned int flags);
+static int audi_unlink(struct inode *dir, struct dentry *dentry);
+static int audi_mkdir(struct inode *dir, struct dentry *dentry, umode_t mode);
+static int audi_rmdir(struct inode *dir, struct dentry *dentry);
 ```
 
 ## Predefined Data Structures and Global Variables
