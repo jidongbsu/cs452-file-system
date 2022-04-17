@@ -123,6 +123,29 @@ After the above step, you can now perform various supported file system operatio
 
 ## Expected Results
 
+### Current State
+
+Before you implement anything, if you compile the starter code, load the kernel module, mount the file system, and then you run the following commands:
+
+```console
+[cs452@localhost cs452-file-system]$ cd test/
+[cs452@localhost test]$ ls
+[cs452@localhost test]$ ls -a
+.  ..
+[cs452@localhost test]$ touch abc
+touch: cannot touch ‘abc’: No such file or directory
+[cs452@localhost test]$ mkdir bbc
+[cs452@localhost test]$ ls
+[cs452@localhost test]$ ls -la
+total 4
+drwxr-xr-x 2 cs452 cs452 4096 Apr 17 16:01 .
+drwxrwxr-x 5 cs452 cs452 4096 Apr 17 16:01 ..
+```
+
+As you can see, you can't create a file, nor create a directory - the *mkdir* command does not fail, but ls command does not show the created directory. After the implementation, you should be able to create files and directories, and show them via the *ls* command.
+
+### After Implemention
+
 to be added.
 
 ## Submission
