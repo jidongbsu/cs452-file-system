@@ -11,8 +11,8 @@
  *
  */
 
-#ifndef AUDIFS_BITMAP_H
-#define AUDIFS_BITMAP_H
+#ifndef AUDI_BITMAP_H
+#define AUDI_BITMAP_H
 
 #include "audi.h"
 
@@ -89,6 +89,6 @@ pr_info("data bitmap was 0x%llx\n", data_bitmap);
 pr_info("data bitmap is 0x%llx\n", data_bitmap);
 }
 
-#endif /* AUDIFS_BITMAP_H */
+#endif /* AUDI_BITMAP_H */
 
 /* vim: set ts=4: */
