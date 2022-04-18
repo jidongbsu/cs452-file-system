@@ -22,7 +22,7 @@ Operating Systems: Three Easy Pieces: [File System Implementation](https://pages
 ### Links
 
 - When a file is created, by default its link count is 1. If one creates a soft or hard link to this file, its link count will be incremented by 1. In this assignment, we do not consider links to files.
-- When a directory is created, by default its link count is 2: for a directory, the link count means how many sub-directories the directory has. A new directory by default has two sub-directories: "." and "..". Here, "." represents the current directory, ".." represents the parent directory. 
+- When a directory is created, by default its link count is 2: for a directory, the link count means how many sub-directories the directory has. A new directory by default has two sub-directories: "." and "..". Here, "." represents the current directory, ".." represents the parent directory. **Note**: a directory which only has these two sub-directories, is still called an empty directory - keep this in mind as you will use this fact when implementing one of the required functions in this assignment.
 
 In the output of *ls -l* or *ls -la*, the second column is the link counts. As can be seen from the example below, files have a link count of 1. The directory *test* has a link count of 2, because it only has "." and "..", plus a regular file called .gitkeep. The directory *cs452-file-system* has a link count of 4, because it has 4 sub-directories: ., .., test, and .git. Creating files inside a directory does not affect the directory's link count.
 
@@ -67,9 +67,11 @@ drwxrwxr-x 4 cs452 cs452 199 Apr 17 19:25 ..
 -rw-rw-r-- 1 cs452 cs452   0 Apr 16 01:12 .gitkeep
 ```
 
-### Directory Entries
+### Directory Entries (struct audi_dir_entry vs struct dentry)
 
 Read the README file of assignment 1 (i.e., [tesla](https://github.com/jidongbsu/cs452-system-call)) to refresh your memory on what directory entries are. In this assignment, we only care about the dentry's inode number and the file/directory's name.
+
+### struct audi_inode vs struct inode
 
 # Specification
 
@@ -261,7 +263,7 @@ The first argument *dir* represents the inode of the parent directory; the secon
 
 You can follow these steps to implement *unlink*():
 
-1. search the *dentry* in the parent directory's dentry table. if found, call *memmove*() to move entries after this entry forward - like what you did in assignment 1 (i.e., [tesla](https://github.com/jidongbsu/cs452-system-call)). question: what if not found?
+1. search the *dentry* in the parent directory's dentry table. if found, call *memmove*() to move entries after this entry forward - like what you did in assignment 1 (i.e., [tesla](https://github.com/jidongbsu/cs452-system-call)). if not found, return -ENOENT, meaning no such entry.
 2. call *memset*() to zero out the previous last entry - so that a future traverse does not count this one entry.
 3. update the parent directory's last modified time and last accessed time to current time. (refer to the *create*() implementation section to see how to update these).
 4. call *drop_nlink*() to decrement the parent directory's link count, if the newly deleted item is a directory (as opposed to a file). You can do it like this: You can do it like this:
@@ -298,6 +300,42 @@ void put_inode(struct audi_sb_info *sbi, uint32_t ino);
 Here *ino* is the inode number.
 
 10. you can now return 0.
+
+## Implementation - *rmdir*()
+
+The *rmdir*() function gets called when the user tries to delete a directory (e.g., rmdir bbb). The function has the following prototype:
+```c
+static int audi_rmdir(struct inode *dir, struct dentry *dentry);
+```
+
+The first argument *dir* represents the inode of the parent directory; the second argument *dentry* represents the dentry of the directory that the user wants to delete. *rmdir*() will fail if the directory to be deleted is not empty.
+
+You can follow these steps to implement *unlink*():
+1. given a *dentry*, we can get its inode like this:
+```c
+struct inode *inode = d_inode(dentry);
+```
+2. if the inode's *i_nlink* field is greater than 2, we know the directory is not empty, return -ENOTEMPTY;
+3. given a directory's inode, we can get its data block like this:
+```c
+int bno;
+bno = AUDI_INODE(inode)->data_block;
+```
+4. read the directory's data block, which contains a dentry table, traverse this dentry table, if it contains more than 2 entries, we know its not empty, still return -ENOTEMPTY.
+5. call *audi_unlink*() and return whatever *audi_unlink*() returns;
+
+## Implementation - *mkdir*()
+
+The *mkdir*() function gets called when the user tries to create a directory (e.g., mkdir ccc). The function has the following prototype:
+```c
+static int audi_mkdir(struct inode *dir, struct dentry *dentry, umode_t mode);
+```
+
+your *mkdir*() can just call *audi_create*() like this, and then returns whatever *audi_create*() returns.
+
+```c
+audi_create(dir, dentry, mode | S_IFDIR, 0);
+```
 
 ## Debugging
 
