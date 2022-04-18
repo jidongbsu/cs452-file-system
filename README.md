@@ -203,7 +203,7 @@ Inside *struct qstr*, *name* stores the name of the file or the directory - whic
 strlen(dentry->d_name.name)
 ```
 
-- The longest file name we support is 60 bytes. Thus we define *AUDI_FILENAME_LEN* in audi.h:
+- The longest file name we support is 60 characters. Thus we define *AUDI_FILENAME_LEN* in audi.h:
 
 ```c
 #define AUDI_FILENAME_LEN 60
@@ -508,7 +508,142 @@ As you can see, you can't create a file, or create a directory - the *mkdir* com
 
 ### After Implemention
 
-to be added.
+- The following tests show that file creation, directory creation, and directory list works.
+
+```console
+[cs452@localhost cs452-file-system]$ cd test/
+[cs452@localhost test]$ ls
+[cs452@localhost test]$ touch abc
+[cs452@localhost test]$ touch bbc
+[cs452@localhost test]$ mkdir cdc
+[cs452@localhost test]$ ls -l
+total 0
+-rw-rw-r-- 1 cs452 cs452    0 Apr 18 05:34 abc
+-rw-rw-r-- 1 cs452 cs452    0 Apr 18 05:34 bbc
+drwxrwxr-x 2 cs452 cs452 4096 Apr 18 05:34 cdc
+```
+
+- The following tests show that file creation then fails when the length of the filename is longer than 60 characters.
+
+```console
+[cs452@localhost test]$ touch mymomsaysthisfileistoolongwhydowecreateafilewithsuchalongname
+touch: cannot touch ‘mymomsaysthisfileistoolongwhydowecreateafilewithsuchalongname’: File name too long
+[cs452@localhost test]$ touch mymomsaysthisfileistoolongwhydowecreateafilewithsuchalongnamewhatiswrongwithyou
+touch: cannot touch ‘mymomsaysthisfileistoolongwhydowecreateafilewithsuchalongnamewhatiswrongwithyou’: File name too long
+[cs452@localhost test]$ touch eeff
+[cs452@localhost test]$ ls -l
+total 0
+-rw-rw-r-- 1 cs452 cs452    0 Apr 18 05:34 abc
+-rw-rw-r-- 1 cs452 cs452    0 Apr 18 05:34 bbc
+drwxrwxr-x 2 cs452 cs452 4096 Apr 18 05:34 cdc
+-rw-rw-r-- 1 cs452 cs452    0 Apr 18 05:38 eeff
+```
+
+- The following tests show that file deletion works with the *rm -f* command.
+
+```console
+[cs452@localhost test]$ ls -l
+total 0
+-rw-rw-r-- 1 cs452 cs452    0 Apr 18 05:34 abc
+-rw-rw-r-- 1 cs452 cs452    0 Apr 18 05:34 bbc
+drwxrwxr-x 2 cs452 cs452 4096 Apr 18 05:34 cdc
+-rw-rw-r-- 1 cs452 cs452    0 Apr 18 05:38 eeff
+[cs452@localhost test]$ rm -f abc
+[cs452@localhost test]$ rm -f bbc
+[cs452@localhost test]$ rm -f eeff
+[cs452@localhost test]$ ls -l
+total 0
+drwxrwxr-x 2 cs452 cs452 4096 Apr 18 05:34 cdc
+```
+
+- The following tests show that directory deletion works with the *rmdir* command, if the directory is empty; when the directory is not empty, *rmdir* reports "Directory not empty".
+
+```console
+[cs452@localhost test]$ ls -l
+total 0
+drwxrwxr-x 2 cs452 cs452 4096 Apr 18 05:34 cdc
+[cs452@localhost test]$ rmdir cdc
+[cs452@localhost test]$ ls
+[cs452@localhost test]$ mkdir ddd
+[cs452@localhost test]$ cd ddd
+[cs452@localhost ddd]$ touch lol
+[cs452@localhost ddd]$ mkdir www
+[cs452@localhost ddd]$ ls
+lol  www
+[cs452@localhost ddd]$ cd ..
+[cs452@localhost test]$ ls
+ddd
+[cs452@localhost test]$ ls -lR
+.:
+total 0
+drwxrwxr-x 3 cs452 cs452 4096 Apr 18 05:43 ddd
+
+./ddd:
+total 0
+-rw-rw-r-- 1 cs452 cs452    0 Apr 18 05:43 lol
+drwxrwxr-x 2 cs452 cs452 4096 Apr 18 05:43 www
+
+./ddd/www:
+total 0
+[cs452@localhost test]$ rmdir ddd
+rmdir: failed to remove ‘ddd’: Directory not empty
+```
+- The following tests show that even the non-empty directory can be deleted with *rm -rf* command.
+
+```console
+[cs452@localhost test]$ ls -l ddd
+total 0
+-rw-rw-r-- 1 cs452 cs452    0 Apr 18 06:05 lol
+drwxrwxr-x 2 cs452 cs452 4096 Apr 18 06:05 www
+[cs452@localhost test]$ rm ddd
+rm: cannot remove ‘ddd’: Is a directory
+[cs452@localhost test]$ rm -rf ddd
+[cs452@localhost test]$ ls -l
+total 0
+```
+
+### Testing Script
+
+All the above tests can also be done automatically via a script, which is also provided in the starter code. The test script is *test-audi.sh*, you can run it like this (and are expected to get exactly the same results):
+
+```console
+[cs452@localhost cs452-file-system]$ ./test-audi.sh 
+
+testing file creation with touch and directory creation with mkdir:
+
+total 0
+-rw-rw-r-- 1 cs452 cs452    0 Apr 18 06:09 abc
+-rw-rw-r-- 1 cs452 cs452    0 Apr 18 06:09 bbc
+drwxrwxr-x 2 cs452 cs452 4096 Apr 18 06:09 cdc
+
+testing long file creation:
+
+touch: cannot touch ‘mymomsaysthisfileistoolongwhydowecreateafilewithsuchalongname’: File name too long
+touch: cannot touch ‘mymomsaysthisfileistoolongwhydowecreateafilewithsuchalongnamewhatiswrongwithyou’: File name too long
+total 0
+-rw-rw-r-- 1 cs452 cs452    0 Apr 18 06:09 abc
+-rw-rw-r-- 1 cs452 cs452    0 Apr 18 06:09 bbc
+drwxrwxr-x 2 cs452 cs452 4096 Apr 18 06:09 cdc
+-rw-rw-r-- 1 cs452 cs452    0 Apr 18 06:09 eeff
+
+testing file deletion:
+
+total 0
+drwxrwxr-x 2 cs452 cs452 4096 Apr 18 06:09 cdc
+
+testing directory deletion:
+
+lol  www
+total 0
+drwxrwxr-x 3 cs452 cs452 4096 Apr 18 06:09 ddd
+rmdir: failed to remove ‘ddd’: Directory not empty
+
+testing rm -rf to delete everything:
+
+total 4
+drwxr-xr-x 2 cs452 cs452 4096 Apr 18 06:09 .
+drwxrwxr-x 5 cs452 cs452 4096 Apr 18 06:09 ..
+```
 
 ## Submission
 
@@ -516,7 +651,7 @@ Due: 23:59pm, May 3rd, 2022. Late submission will not be accepted/graded.
 
 ## Project Layout
 
-All files necessary for compilation and testing need to be submitted, this includes source code files, header files, and Makefile. The structure of the submission folder should be the same as what was given to you.
+All files necessary for compilation and testing need to be submitted, this includes source code files, header files, Makefile, and the bash script. The structure of the submission folder should be the same as what was given to you.
 
 ## Grading Rubric (Undergraduate and Graduate)
 
@@ -525,11 +660,13 @@ All files necessary for compilation and testing need to be submitted, this inclu
   - You are not allowed to suppress warnings.
 
 - [70 pts] Functional requirements:
-  - file creation works (touch).	/10
-  - file deletion works (rm -f).	/10
-  - directory creation works (mkdir).	/10
-  - directory display works (ls -l).	/20
-  - directory deletion works (rmdir).	/20
+  - file creation works when the file name is shorter than 60 characters (touch).			/10
+  - file creation reports "File name too long" when the file name is longer than 60 characters (touch).	/10
+  - directory creation works (mkdir).									/10
+  - directory list works (ls -l).									/10
+  - file deletion works (rm -f).									/10
+  - directory deletion works when the directory is empty (rmdir).					/10
+  - directory deletion reports "Directory not empty" when the directory is not empty (rmdir).		/10
 
 - [10 pts] Module can be installed and removed without crashing the system:
   - You won't get these points if your module doesn't implement any of the above functional requirements.
