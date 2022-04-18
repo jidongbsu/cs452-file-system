@@ -261,7 +261,7 @@ The first argument *dir* represents the inode of the parent directory; the secon
 
 You can follow these steps to implement *unlink*():
 
-1. search the *dentry* in the parent directory's dentry table. if found, call *memmove*() to move entries after this entry forward - like what you did in assignment 1 (i.e., [tesla](https://github.com/jidongbsu/cs452-system-call)).
+1. search the *dentry* in the parent directory's dentry table. if found, call *memmove*() to move entries after this entry forward - like what you did in assignment 1 (i.e., [tesla](https://github.com/jidongbsu/cs452-system-call)). question: what if not found?
 2. call *memset*() to zero out the previous last entry - so that a future traverse does not count this one entry.
 3. update the parent directory's last modified time and last accessed time to current time. (refer to the *create*() implementation section to see how to update these).
 4. call *drop_nlink*() to decrement the parent directory's link count, if the newly deleted item is a directory (as opposed to a file). You can do it like this: You can do it like this:
