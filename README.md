@@ -128,7 +128,7 @@ The starter code looks like this:
 
 ```console
 [cs452@localhost cs452-file-system]$ ls
-audi.h  audi_main.c  bitmap.h  dir.c  file.c  inode.c  Makefile  mkfs.c  README.md  super.c  test
+audi.h  audi_main.c  bitmap.h  dir.c  file.c  inode.c  Makefile  mkfs.c  README.md  super.c  test  test-audi.sh
 ```
 
 You will be completing the inode.c file.
