@@ -120,7 +120,14 @@ strlen(dentry->d_name.name)
 
 ## Implementation - create()
 
-You can follow these steps to implement create()
+The create() function gets called when the user tries to create a file. The function has the following prototype:
+```c
+static int audi_create(struct inode *dir, struct dentry *dentry, umode_t mode, bool excl);
+```
+
+The first argument *dir* represents the inode of the parent directory; the second argument *dentry* represents the dentry of the file/directory that the user wants to create; the third argument *mode* determines if the user wants to create a file or a directory; the fourth argument will not be used in this assignment.
+
+You can follow these steps to implement create():
 
 1. if the new file's filename length is larger than AUDI_FILENAME_LEN, return -ENAMETOOLONG;
 2. if the parent directory is already full, return -EMLINK - indicating "too many links"; 
@@ -265,16 +272,16 @@ All files necessary for compilation and testing need to be submitted, this inclu
 
 ## Grading Rubric (Undergraduate and Graduate)
 
-- [10 pts] Compiling
+- [10 pts] Compiling:
   - Each compiler warning will result in a 3 point deduction.
-  - You are not allowed to suppress warnings
+  - You are not allowed to suppress warnings.
 
 - [70 pts] Functional requirements:
-  - file creation works (touch)/10
-  - file deletion works (rm -f)/10
-  - directory creation works (mkdir) /10
-  - directory display works (ls -l) /20
-  - directory deletion works (rmdir) /20
+  - file creation works (touch).	/10
+  - file deletion works (rm -f).	/10
+  - directory creation works (mkdir).	/10
+  - directory display works (ls -l).	/20
+  - directory deletion works (rmdir).	/20
 
 - [10 pts] Module can be installed and removed without crashing the system:
   - You won't get these points if your module doesn't implement any of the above functional requirements.
