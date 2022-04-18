@@ -22,9 +22,9 @@ Operating Systems: Three Easy Pieces: [File System Implementation](https://pages
 ### Links
 
 - When a file is created, by default its link count is 1. If one creates a soft or hard link to this file, its link count will be incremented by 1. In this assignment, we do not consider links to files.
-- When a directory is created, by default its link count is 2: for a directory, the link count means how many sub-directories the directory has. A new directory by default has two sub-directories: "." and "..". "." represents the current directory, ".." represents the parent directory. 
+- When a directory is created, by default its link count is 2: for a directory, the link count means how many sub-directories the directory has. A new directory by default has two sub-directories: "." and "..". Here, "." represents the current directory, ".." represents the parent directory. 
 
-In the output of *ls -l* or *ls -la*, the second column is the link counts. As can be seen from the example below, files have a link count of 1. The directory *test* has a link count of 2. The directory *cs452-file-system* has a link count of 4, because it has 4 sub-directories: ., .., test, and .git. Creating files inside a directory does not affect the directory's link count.
+In the output of *ls -l* or *ls -la*, the second column is the link counts. As can be seen from the example below, files have a link count of 1. The directory *test* has a link count of 2, because it only has "." and "..", plus a regular file called .gitkeep. The directory *cs452-file-system* has a link count of 4, because it has 4 sub-directories: ., .., test, and .git. Creating files inside a directory does not affect the directory's link count.
 
 ```console
 [cs452@localhost cs452-file-system]$ ls -l
@@ -67,6 +67,10 @@ drwxrwxr-x 4 cs452 cs452 199 Apr 17 19:25 ..
 -rw-rw-r-- 1 cs452 cs452   0 Apr 16 01:12 .gitkeep
 ```
 
+### Directory Entries
+
+Read the README file of assignment 1 (i.e., [tesla](https://github.com/jidongbsu/cs452-system-call)) to refresh your memory on what directory entries are. In this assignment, we only care about the dentry's inode number and the file/directory's name.
+
 # Specification
 
 The provided starter code implements a very simple file system whose layout matches 100% with the example presented in the book chapter, but it currently does not support any of these operations: file creation, directory creation, directory list, file deletion, and directory deletion. In this assignment, you will extend this very simple file system so as to support these operations.
@@ -94,7 +98,7 @@ static int audi_mkdir(struct inode *dir, struct dentry *dentry, umode_t mode);
 static int audi_rmdir(struct inode *dir, struct dentry *dentry);
 ```
 
-In the remaining of this README file, we will refer to these functions as the create(), lookup(), unlink(), mkdir(), rmdir(), respectively.
+In the remaining of this README file, we will refer to these functions as the *create*(), *lookup*(), *unlink*(), *mkdir*(), *rmdir*(), respectively.
 
 ## Predefined Data Structures and Global Variables
 
@@ -164,30 +168,30 @@ strlen(dentry->d_name.name)
 #define AUDI_MAX_SUBFILES 64
 ```
 
-## Implementation - create()
+## Implementation - *create*()
 
-The create() function gets called when the user tries to create a file. The function has the following prototype:
+The *create*() function gets called when the user tries to create a file. The function has the following prototype:
 ```c
 static int audi_create(struct inode *dir, struct dentry *dentry, umode_t mode, bool excl);
 ```
 
 The first argument *dir* represents the inode of the parent directory; the second argument *dentry* represents the dentry of the file/directory that the user wants to create; the third argument *mode* determines if the user wants to create a file or a directory; the fourth argument will not be used in this assignment.
 
-You can follow these steps to implement create():
+You can follow these steps to implement *create*():
 
 1. if the new file's filename length is larger than AUDI_FILENAME_LEN, return -ENAMETOOLONG;
 2. if the parent directory is already full, return -EMLINK - indicating "too many links"; 
-3. if not the above two cases, then call audi_new_inode() to create an new inode, which will allocate a new inode and a new block. You can call it like this:
+3. if not the above two cases, then call *audi_new_inode*() to create an new inode, which will allocate a new inode and a new block. You can call it like this:
 
 ```c
     struct inode *inode;
-    /* get a new free inode, and it is initialized in this audi_new_inode() function. */
+    /* get a new free inode, and it is initialized in this *audi_new_inode*() function. */
     inode = audi_new_inode(dir, mode);
 ```
 
-4. call memset() to cleanup this new block - so that data belonging to other files/directories (which used this block before) do not get leaked.
+4. call *memset*() to zero out this new block - so that data belonging to other files/directories (which used this block before) do not get leaked.
 5. insert the dentry representing the new file/directory into the end of the parent directory's dentry table.
-6. call mark_inode_dirty() to mark this inode as dirty so that the kernel will put the inode on the superblock's dirty list and write it into the disk. this function, defined in the kernel (in include/linux/fs.h), has the following prototype:
+6. call *mark_inode_dirty*() to mark this inode as dirty so that the kernel will put the inode on the superblock's dirty list and write it into the disk. this function, defined in the kernel (in include/linux/fs.h), has the following prototype:
 
 ```c
 void mark_inode_dirty(struct inode *inode);
@@ -198,19 +202,101 @@ void mark_inode_dirty(struct inode *inode);
     dir->i_mtime = dir->i_atime = CURRENT_TIME;
 ```
 
-8. call inc_nlink() to increment the parent directory's link count, if the newly created item is a directory (as opposed to a file). You can do it like this:
+8. call *inc_nlink*() to increment the parent directory's link count, if the newly created item is a directory (as opposed to a file). You can do it like this:
 
 ```c
     if (S_ISDIR(mode))
         inc_nlink(dir);
 ```
 
-9. call mark_inode_dirty() to mark the parent's inode as dirty so that the kernel will put the parent's inode on the superblock's dirty list and write it into the disk.
-10. call d_instantiate() to fill in the inode (the newly created inode, not the parent's inode) information for a dentry. this function, defined in the kernel (in fs/dcache.c), has the following prototype:
+9. call *mark_inode_dirty*() to mark the parent's inode as dirty so that the kernel will put the parent's inode on the superblock's dirty list and write it into the disk.
+10. call *d_instantiate*() to fill in the inode (the newly created inode, not the parent's inode) information for a dentry. this function, defined in the kernel (in fs/dcache.c), has the following prototype:
 ```c
 void d_instantiate(struct dentry *, struct inode *);
 ```
 11. you can now return 0.
+
+## Implementation - *lookup*()
+
+The *lookup*() function gets called when the user tries to list a file (e.g. ls -l a.txt). The function has the following prototype:
+```c
+static struct dentry *audi_lookup(struct inode *dir, struct dentry *dentry, unsigned int flags);
+```
+
+The first argument *dir* represents the inode of the parent directory; the second argument *dentry* represents the dentry of the file/directory that the user wants to list; the third argument will not be used in this assignment.
+
+If the chosen file exists in the parent directory, the *lookup*() function is expected to fill in *dentry* with necessary information (i.e., information contained in the inode of the file) that can be displayed to the user. If the chosen file does not exist in the parent directory, the *lookup*() function is expected to fill in *dentry* with NULL.
+
+You can follow these steps to implement *lookup*():
+
+1. if the chosen file's filename length is larger than AUDI_FILENAME_LEN, return -ENAMETOOLONG;
+2. search the *dentry* in the parent directory's dentry table. if found, call *audi_iget*() which returns the corresponding inode. *audi_iget*() has the following prototype:
+
+```c
+struct inode *audi_iget(struct super_block *sb, unsigned long ino);
+```
+
+The second argument here is the inode number.
+
+3. update the parent directory's last accessed time to current time. (refer to the *create*() implementation section to see how to update this).
+4. call *mark_inode_dirty*() to mark the parent's inode as dirty so that the kernel will put the parent's inode on the superblock's dirty list and write it into the disk.
+5. call *d_add*() to fill in the dentry with the inode's information. This function has the following prototype:
+```c
+void d_add(struct dentry *entry, struct inode *inode);
+```
+
+Note, if in step 2, the result was not found, then here you should pass *NULL* as the second argument to *d_add()*.
+
+6. you can now return NULL. The return value is important to the user, what they need is now at the memory address pointed to by *dentry*, which is the second argument of this *lookup*() function.
+
+
+## Implementation - *unlink*()
+
+The *unlink*() function gets called when the user tries to delete a file (e.g., rm -f a.txt). The function has the following prototype:
+```c
+static int audi_unlink(struct inode *dir, struct dentry *dentry);
+```
+
+The first argument *dir* represents the inode of the parent directory; the second argument *dentry* represents the dentry of the file/directory that the user wants to delete.
+
+You can follow these steps to implement *unlink*():
+
+1. search the *dentry* in the parent directory's dentry table. if found, call *memmove*() to move entries after this entry forward - like what you did in assignment 1 (i.e., [tesla](https://github.com/jidongbsu/cs452-system-call)).
+2. call *memset*() to zero out the previous last entry - so that a future traverse does not count this one entry.
+3. update the parent directory's last modified time and last accessed time to current time. (refer to the *create*() implementation section to see how to update these).
+4. call *drop_nlink*() to decrement the parent directory's link count, if the newly deleted item is a directory (as opposed to a file). You can do it like this: You can do it like this:
+```c
+    if (S_ISDIR(inode->i_mode)) {
+        drop_nlink(dir);
+    }
+```
+5. call *mark_inode_dirty*() to mark the parent's inode as dirty so that the kernel will put the parent's inode on the superblock's dirty list and write it into the disk.
+6. call *memset*() to zero out the data block belonging to the deleted file.
+7. call *put_block*() so as to update the data bitmap to mark this data block is free. *put_block*(), defined in bitmap.h, has the following prototype:
+```c
+void put_block(struct audi_sb_info *sbi, uint32_t bno);
+```
+
+Here *bno* is the block number.
+
+8. reset inode information and then call *mark_inode_dirty*() to mark the parent's inode as dirty so that the kernel will put the parent's inode on the superblock's dirty list and write it into the disk. You can do these like this:
+```c
+    AUDI_INODE(inode)->data_block = 0;
+    inode->i_size = 0;
+    i_uid_write(inode, 0);
+    i_gid_write(inode, 0);
+    inode->i_mode = 0;
+    inode->i_ctime.tv_sec = inode->i_mtime.tv_sec = inode->i_atime.tv_sec = 0;
+    drop_nlink(inode); /* drop nlink again? */
+    mark_inode_dirty(inode);
+```
+9. call *put_inode*() so as to update the inode bitmap to mark this inode is free. *put_inode*(), defined in bitmap.h, has the following prototype:
+```c
+void put_inode(struct audi_sb_info *sbi, uint32_t ino);
+```
+
+Here *ino* is the inode number.
+10. you can now return 0.
 
 ## Debugging
 
