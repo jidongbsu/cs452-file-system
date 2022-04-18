@@ -296,6 +296,7 @@ void put_inode(struct audi_sb_info *sbi, uint32_t ino);
 ```
 
 Here *ino* is the inode number.
+
 10. you can now return 0.
 
 ## Debugging
