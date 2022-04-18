@@ -48,9 +48,116 @@ static int audi_mkdir(struct inode *dir, struct dentry *dentry, umode_t mode);
 static int audi_rmdir(struct inode *dir, struct dentry *dentry);
 ```
 
+In the remaining of this README file, we will refer to these functions as the create(), lookup(), unlink(), mkdir(), rmdir(), respectively.
+
 ## Predefined Data Structures and Global Variables
 
-to be added.
+- The Linux kernel defines *struct dentry* in include/linux/dcache.h:
+
+```c
+struct dentry {
+        /* RCU lookup touched fields */
+        unsigned int d_flags;           /* protected by d_lock */
+        seqcount_t d_seq;               /* per dentry seqlock */
+        struct hlist_bl_node d_hash;    /* lookup hash list */
+        struct dentry *d_parent;        /* parent directory */
+        struct qstr d_name;
+        struct inode *d_inode;          /* Where the name belongs to - NULL is
+                                         * negative */
+        unsigned char d_iname[DNAME_INLINE_LEN];        /* small names */
+
+        /* Ref lookup also touches following */
+        struct lockref d_lockref;       /* per-dentry lock and refcount */
+        const struct dentry_operations *d_op;
+        struct super_block *d_sb;       /* The root of the dentry tree */
+        unsigned long d_time;           /* used by d_revalidate */
+        void *d_fsdata;                 /* fs-specific data */
+
+        struct list_head d_lru;         /* LRU list */
+        /*
+         * d_child and d_rcu can share memory
+         */
+        union {
+                struct list_head d_child;       /* child of parent list */
+                struct rcu_head d_rcu;
+        } d_u;
+        struct list_head d_subdirs;     /* our children */
+        struct hlist_node d_alias;      /* inode alias list */
+};
+```
+
+Among its fields, *struct qstr d_name* is the most relevant field, and *struct qstr* is also defined in include/linux/dcache.h:
+
+```c
+struct qstr {
+        union {
+                struct {
+                        HASH_LEN_DECLARE;
+                };
+                u64 hash_len;
+        };
+        const unsigned char *name;
+};
+```
+
+Inside *struct qstr*, *name* stores the name of the file or the directory - which we are going to create or delete. Given that *dentry* is the second argument of all of the functions you are going to implement, in order to access its corresponding file (or directory) name, you can use *dentry->d_name.name*, for example, if you want to measure the length of the file (or directory) name, you can use:
+
+```c
+strlen(dentry->d_name.name)
+```
+
+- The longest file name we support is 60 bytes. Thus we define *AUDI_FILENAME_LEN* in audi.h:
+
+```c
+#define AUDI_FILENAME_LEN 60
+```
+
+- Each directory can have at most 64 files (including sub-directories). Thus we define *AUDI_MAX_SUBFILES* in audi.h.
+
+```c
+#define AUDI_MAX_SUBFILES 64
+```
+
+## Implementation - create()
+
+You can follow these steps to implement create()
+
+1. if the new file's filename length is larger than AUDI_FILENAME_LEN, return -ENAMETOOLONG;
+2. if the parent directory is already full, return -EMLINK - indicating "too many links"; 
+3. if not the above two cases, then call audi_new_inode() to create an new inode, which will allocate a new inode and a new block. You can call it like this:
+
+```c
+    struct inode *inode;
+    /* get a new free inode, and it is initialized in this audi_new_inode() function. */
+    inode = audi_new_inode(dir, mode);
+```
+
+4. call memset() to cleanup this new block - so that data belonging to other files/directories (which used this block before) do not get leaked.
+5. insert the dentry representing the new file/directory into the end of the parent directory's dentry table.
+6. call mark_inode_dirty() to mark this inode as dirty so that the kernel will put the inode on the superblock's dirty list and write it into the disk. this function, defined in the kernel (in include/linux/fs.h), has the following prototype:
+
+```c
+void mark_inode_dirty(struct inode *inode);
+```
+7. update the parent directory's last modified time and last accessed time to current time, you can do it like this:
+
+```c
+    dir->i_mtime = dir->i_atime = CURRENT_TIME;
+```
+
+8. call inc_nlink() to increment the parent directory's link count, if the newly created item is a directory (as opposed to a file). You can do it like this:
+
+```c
+    if (S_ISDIR(mode))
+        inc_nlink(dir);
+```
+
+9. call mark_inode_dirty() to mark the parent's inode as dirty so that the kernel will put the parent's inode on the superblock's dirty list and write it into the disk.
+10. call d_instantiate() to fill in the inode (the newly created inode, not the parent's inode) information for a dentry. this function, defined in the kernel (in fs/dcache.c), has the following prototype:
+```c
+void d_instantiate(struct dentry *, struct inode *);
+```
+11. you can now return 0.
 
 ## Debugging
 
@@ -142,7 +249,7 @@ drwxr-xr-x 2 cs452 cs452 4096 Apr 17 16:01 .
 drwxrwxr-x 5 cs452 cs452 4096 Apr 17 16:01 ..
 ```
 
-As you can see, you can't create a file, nor create a directory - the *mkdir* command does not fail, but ls command does not show the created directory. After the implementation, you should be able to create files and directories, and show them via the *ls* command.
+As you can see, you can't create a file, or create a directory - the *mkdir* command does not fail, but the *ls* command does not show the created directory. After the implementation, you should be able to create files and directories, and show them via the *ls* command.
 
 ### After Implemention
 
@@ -162,11 +269,12 @@ All files necessary for compilation and testing need to be submitted, this inclu
   - Each compiler warning will result in a 3 point deduction.
   - You are not allowed to suppress warnings
 
-- [70 pts] Main driver: supports read properly, writing (to device 1 and 2) acts like /dev/null, kill process writing to /dev/toyota3.
-  - toyota-test1 produces expected results /10
-  - toyota-test2 produces expected results /20
-  - toyota-test3 produces expected results /20
-  - toyota-test4 produces expected results /20
+- [70 pts] Functional requirements:
+  - file creation works (touch)/10
+  - file deletion works (rm -f)/10
+  - directory creation works (mkdir) /10
+  - directory display works (ls -l) /20
+  - directory deletion works (rmdir) /20
 
 - [10 pts] Module can be installed and removed without crashing the system:
   - You won't get these points if your module doesn't implement any of the above functional requirements.
