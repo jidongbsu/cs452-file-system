@@ -19,11 +19,57 @@ Operating Systems: Three Easy Pieces: [File System Implementation](https://pages
 
 ## Background
 
-to be added.
+### Links
+
+- When a file is created, by default its link count is 1. If one creates a soft or hard link to this file, its link count will be incremented by 1. In this assignment, we do not consider links to files.
+- When a directory is created, by default its link count is 2: for a directory, the link count means how many sub-directories the directory has. A new directory by default has two sub-directories: "." and "..". "." represents the current directory, ".." represents the parent directory. 
+
+In the output of *ls -l* or *ls -la*, the second column is the link counts. As can be seen from the example below, files have a link count of 1. The directory *test* has a link count of 2. The directory *cs452-file-system* has a link count of 4, because it has 4 sub-directories: ., .., test, and .git. Creating files inside a directory does not affect the directory's link count.
+
+```console
+[cs452@localhost cs452-file-system]$ ls -l
+total 328
+-rw-rw-r-- 1 cs452 cs452   3917 Apr 17 03:16 audi.h
+-rw-rw-r-- 1 cs452 cs452   2804 Apr 17 03:16 audi_main.c
+-rw-rw-r-- 1 cs452 cs452   2578 Apr 17 04:06 bitmap.h
+-rw-rw-r-- 1 cs452 cs452   3662 Apr 17 04:07 dir.c
+-rw-rw-r-- 1 cs452 cs452   4158 Apr 17 03:16 file.c
+-rw-rw-r-- 1 cs452 cs452   8103 Apr 17 03:52 inode.c
+-rw-rw-r-- 1 cs452 cs452    817 Apr 17 03:16 Makefile
+-rw-rw-r-- 1 cs452 cs452   8842 Apr 17 04:07 mkfs.c
+-rw-rw-r-- 1 cs452 cs452  11475 Apr 17 19:16 README.md
+-rw-rw-r-- 1 cs452 cs452  11606 Apr 17 03:16 super.c
+drwxrwxr-x 2 cs452 cs452     22 Apr 16 01:12 test
+-rw-rw-r-- 1 cs452 cs452 262144 Apr 17 16:03 test.img
+[cs452@localhost cs452-file-system]$ ls -la
+total 332
+drwxrwxr-x 4 cs452 cs452    199 Apr 17 19:26 .
+drwxrwxr-x 4 cs452 cs452     54 Apr 16 00:54 ..
+-rw-rw-r-- 1 cs452 cs452   3917 Apr 17 03:16 audi.h
+-rw-rw-r-- 1 cs452 cs452   2804 Apr 17 03:16 audi_main.c
+-rw-rw-r-- 1 cs452 cs452   2578 Apr 17 04:06 bitmap.h
+-rw-rw-r-- 1 cs452 cs452   3662 Apr 17 04:07 dir.c
+-rw-rw-r-- 1 cs452 cs452   4158 Apr 17 03:16 file.c
+drwxrwxr-x 8 cs452 cs452    220 Apr 17 19:14 .git
+-rw-rw-r-- 1 cs452 cs452   8103 Apr 17 03:52 inode.c
+-rw-rw-r-- 1 cs452 cs452    817 Apr 17 03:16 Makefile
+-rw-rw-r-- 1 cs452 cs452   8842 Apr 17 04:07 mkfs.c
+-rw-rw-r-- 1 cs452 cs452  12914 Apr 17 19:26 README.md
+-rw-rw-r-- 1 cs452 cs452  11606 Apr 17 03:16 super.c
+drwxrwxr-x 2 cs452 cs452     22 Apr 16 01:12 test
+-rw-rw-r-- 1 cs452 cs452 262144 Apr 17 16:03 test.img
+[cs452@localhost cs452-file-system]$ ls -l test
+total 0
+[cs452@localhost cs452-file-system]$ ls -la test
+total 0
+drwxrwxr-x 2 cs452 cs452  22 Apr 16 01:12 .
+drwxrwxr-x 4 cs452 cs452 199 Apr 17 19:25 ..
+-rw-rw-r-- 1 cs452 cs452   0 Apr 16 01:12 .gitkeep
+```
 
 # Specification
 
-to be added.
+The provided starter code implements a very simple file system whose layout matches 100% with the example presented in the book chapter, but it currently does not support any of these operations: file creation, directory creation, directory list, file deletion, and directory deletion. In this assignment, you will extend this very simple file system so as to support these operations.
 
 ## The Starter Code
 
