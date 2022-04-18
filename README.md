@@ -4,7 +4,8 @@ In this assignment, we will write a Linux kernel module called audi. This module
 
 ## Learning Objectives
 
-- Understanding how file systems are organized.
+- Understanding how file systems are organized on the disk.
+- Understanding how file system data flow from disk to memory, and how file system data flow from memory to disk.
 - Learning how to write a simple file system in a Linux system.
 
 ## Important Notes
@@ -21,7 +22,7 @@ Operating Systems: Three Easy Pieces: [File System Implementation](https://pages
 
 ### Directories vs Files
 
-Directories are considered a special type of files. In the file system you are going to implement, there are only two types of files: regular files, and directories. Every time a file is created, we allocate one data block, which is 4KB, to this file. Thus each file can store at most 4KB data. Every time a directory is created, we also allocate one data block to this directory. This data block does not store the directory's data, because directory itself does not have any data, rather, we use this data block to store the directory's dentry table. Read the README file of assignment 1 (i.e., [tesla](https://github.com/jidongbsu/cs452-system-call)) to refresh your memory on what directory entries (or dentries for short) are. In this assignment, we only care about the dentry's inode number and the file/directory's name.
+Directories are considered a special type of files. In the file system you are going to implement, there are only two types of files: regular files, and directories. Every time a file is created, we allocate one data block, which is 4KB, to this file. Thus each file can store at most 4KB data. Every time a directory is created, we also allocate one data block to this directory. This data block does not store the directory's data, because directory itself does not have any data, rather, we use this data block to store the directory's dentry table. Read the README file of assignment 1 (i.e., [tesla](https://github.com/jidongbsu/cs452-system-call)) to refresh your memory on what dentries (short for directory entries) are. In this assignment, we only care about the dentry's inode number and the file/directory's name.
 
 ### Links
 
@@ -71,10 +72,51 @@ drwxrwxr-x 4 cs452 cs452 199 Apr 17 19:25 ..
 -rw-rw-r-- 1 cs452 cs452   0 Apr 16 01:12 .gitkeep
 ```
 
-### Directory Entries (struct audi_dir_entry vs struct dentry)
+### struct audi_dir_entry vs struct dentry
 
+The Linux kernel supports many different file systems, thus it defines a generic interface layer called the virtual file system (VFS) layer. This layer defines a generic data structure called *struct dentry*. This structure represents information that is stored in memory.
+
+Our file system also defines its own directory entry data structure, which is called *struct audi_dir_entry*. This data structure represents the information that is actually stored on the disk.
+
+```c
+struct audi_dir_entry {
+    uint32_t inode; /* inode number */
+    char name[AUDI_FILENAME_LEN];   /* file name, up to AUDI_FILENAME_LEN */
+};
+
+struct audi_dir_block {
+    struct audi_dir_entry entries[AUDI_MAX_SUBFILES];
+};
+
+```
+
+Each instance of *struct audi_dir_block* is one data block which stores the dentry table for a directory. The dentry table has at most 64 entries, in other words, we allow each directory to have at most 64 files (including subdirectories).
 
 ### struct audi_inode vs struct inode
+
+The Linux VFS layer also defines a generic data structure called *struct inode*. This structure represents information that is stored in memory.
+
+Our file system also defines its own inode data structure, which is called *struct audi_inode*. This data structure represents the information that is actually stored on the disk. See **the inode table** in the book chapter. Just like the example in the book chapter, each *struct audi_inode* is 256 bytes.
+
+```c
+struct audi_inode {
+    uint32_t i_mode;   /* File mode */
+    uint32_t i_uid;    /* Owner id */
+    uint32_t i_gid;    /* Group id */
+    uint32_t i_size;   /* Size in bytes */
+    uint32_t i_ctime;  /* Inode change time */
+    uint32_t i_atime;  /* Access time */
+    uint32_t i_mtime;  /* Modification time */
+    uint32_t i_nlink;  /* Hard links count */
+    uint32_t data_block;  /* Pointer to the block - we only support one block right now, in other words, each file/directory occupies at most one block.  */
+    char padding [220]; /* add padding so as to make this matches with the one described in the book chapter: 256 bytes per inode. */
+};
+
+struct audi_inode_info {
+    uint32_t data_block;  /* pointer for this file/dir */
+    struct inode vfs_inode;
+};
+```
 
 # Specification
 
@@ -173,6 +215,39 @@ strlen(dentry->d_name.name)
 #define AUDI_MAX_SUBFILES 64
 ```
 
+## Related Kernel APIs
+
+- The *sb_bread*() function. This function allows you to read a data block from the disk:
+
+```c
+struct buffer_head *bh;
+struct audi_dir_block *dir_block;
+bh = sb_bread(sb, 40);	// this is just an example, let's say you want to read block 40.
+dir_block = (struct audi_dir_block *) bh->b_data;
+```
+
+after these lines, now the data block's content is stored at the address pointed to by *dir_block*. You may want to change some part of this block, and after the change, if you want the change to be flushed back into the disk, call these two functions:
+
+```c
+mark_buffer_dirty(bh);
+brelse(bh);
+```
+
+Here, *mark_buffer_dirty*() will mark the data is dirty and therefore will soon be written back to disk; *brelse*() will release the memory, after this line, you can't access *dir_block* anymore.
+
+- The string operation functions. You may want to use:
+  - strlen()
+  - strncmp()
+  - strncpy()
+
+They are all available in kernel code - the Linux kernel re-implements them in the kernel space. You do not need to include any extra header files to use these functions. Use them in the kernel space the same way as you normally would in applications.
+
+- The memory operation functions. You may want to use:
+  - memset()
+  - memmove()
+
+The remaining sections of this README will tell you when you want to use these two functions.
+
 ## Implementation - *create*()
 
 The *create*() function gets called when the user tries to create a file. The function has the following prototype:
@@ -194,32 +269,31 @@ You can follow these steps to implement *create*():
     inode = audi_new_inode(dir, mode);
 ```
 
-4. call *memset*() to zero out this new block - so that data belonging to other files/directories (which used this block before) do not get leaked.
-5. insert the dentry representing the new file/directory into the end of the parent directory's dentry table.
-6. call *mark_inode_dirty*() to mark this inode as dirty so that the kernel will put the inode on the superblock's dirty list and write it into the disk. this function, defined in the kernel (in include/linux/fs.h), has the following prototype:
+4. insert the dentry representing the new file/directory into the end of the parent directory's dentry table.
+5. call *mark_inode_dirty*() to mark this inode as dirty so that the kernel will put the inode on the superblock's dirty list and write it into the disk. this function, defined in the kernel (in include/linux/fs.h), has the following prototype:
 
 ```c
 void mark_inode_dirty(struct inode *inode);
 ```
-7. update the parent directory's last modified time and last accessed time to current time, you can do it like this:
+6. update the parent directory's last modified time and last accessed time to current time, you can do it like this:
 
 ```c
     dir->i_mtime = dir->i_atime = CURRENT_TIME;
 ```
 
-8. call *inc_nlink*() to increment the parent directory's link count, if the newly created item is a directory (as opposed to a file). You can do it like this:
+7. call *inc_nlink*() to increment the parent directory's link count, if the newly created item is a directory (as opposed to a file). You can do it like this:
 
 ```c
     if (S_ISDIR(mode))
         inc_nlink(dir);
 ```
 
-9. call *mark_inode_dirty*() to mark the parent's inode as dirty so that the kernel will put the parent's inode on the superblock's dirty list and write it into the disk.
-10. call *d_instantiate*() to fill in the inode (the newly created inode, not the parent's inode) information for a dentry. this function, defined in the kernel (in fs/dcache.c), has the following prototype:
+8. call *mark_inode_dirty*() to mark the parent's inode as dirty so that the kernel will put the parent's inode on the superblock's dirty list and write it into the disk.
+9. call *d_instantiate*() to fill in the inode (the newly created inode, not the parent's inode) information for a dentry. this function, defined in the kernel (in fs/dcache.c), has the following prototype:
 ```c
 void d_instantiate(struct dentry *, struct inode *);
 ```
-11. you can now return 0.
+10. you can now return 0.
 
 ## Implementation - *lookup*()
 
