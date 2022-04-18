@@ -279,7 +279,7 @@ void put_block(struct audi_sb_info *sbi, uint32_t bno);
 
 Here *bno* is the block number.
 
-8. reset inode information and then call *mark_inode_dirty*() to mark the parent's inode as dirty so that the kernel will put the parent's inode on the superblock's dirty list and write it into the disk. You can do these like this:
+8. reset inode information (all to 0) and then call *mark_inode_dirty*() to mark this inode as dirty so that the kernel will put this inode on the superblock's dirty list and write it into the disk. You can do these like this:
 ```c
     AUDI_INODE(inode)->data_block = 0;
     inode->i_size = 0;
