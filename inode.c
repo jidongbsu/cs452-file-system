@@ -20,6 +20,8 @@ struct inode *audi_iget(struct super_block *sb, unsigned long ino)
 	struct audi_inode_info *ai = NULL;
 	struct audi_sb_info *sbi = AUDI_SB(sb);
 	struct buffer_head *bh = NULL;
+	struct buffer_head *bh2 = NULL;
+	struct audi_dir_block *dblock;
 	/* inode_blocks: which block this inode is located on. 
 	 * according to the book chapter, it must be between block 3 and block 7.
 	 * block 0 for super block, block 1 for inode bitmap, block 2 for data bitmap.
@@ -63,6 +65,7 @@ struct inode *audi_iget(struct super_block *sb, unsigned long ino)
 
 	inode->i_sb = sb;
 
+	inode->i_ino = ino;
 	inode->i_mode = le32_to_cpu(ainode->i_mode);
 	i_uid_write(inode, le32_to_cpu(ainode->i_uid));
 	i_gid_write(inode, le32_to_cpu(ainode->i_gid));
@@ -92,7 +95,22 @@ struct inode *audi_iget(struct super_block *sb, unsigned long ino)
 	 * but struct audi_inode does track, because this pointer is file system specific,
 	 * not every file system has such a pointer. */
 	ai->data_block = le32_to_cpu(ainode->data_block);
-
+	if(ino == AUDI_ROOT_INO){
+		if(!(bh2 = sb_bread(sb, ai->data_block))){
+        	return ERR_PTR(-EIO);
+		}
+		pr_info("audi_iget: reading block %d\n", ai->data_block);
+    	dblock = (struct audi_dir_block *) bh2->b_data;
+		dblock->entries[0].inode = ino;
+		dblock->entries[0].name[0]='.';
+		dblock->entries[0].name[1]='\0';
+		dblock->entries[1].inode = -1; // question: is this number correct? or do we care?
+		dblock->entries[1].name[0]='.';
+		dblock->entries[1].name[1]='.';
+		dblock->entries[1].name[2]='\0';
+		pr_info("entries[0].inode is %d, entries[1].inode is %d\n", dblock->entries[0].inode, dblock->entries[1].inode);
+    	mark_buffer_dirty(bh);
+	}
 	/* after sb_bread, once the information is obtained, we always need to call brelse. */
 	brelse(bh);
 
@@ -104,7 +122,6 @@ struct inode *audi_iget(struct super_block *sb, unsigned long ino)
 	return inode;
 
 failed:
-	brelse(bh);
 	iget_failed(inode);
 	return ERR_PTR(ret);
 }
@@ -116,7 +133,10 @@ static struct inode *audi_new_inode(struct inode *dir, mode_t mode)
     struct audi_inode_info *ai;
     struct super_block *sb;
     struct audi_sb_info *sbi;
+	struct buffer_head *bh;
+	struct audi_dir_block *dblock;
     uint32_t ino, bno;
+    char *block;
     int ret;
 
     /* check mode before doing anything to avoid undoing everything */
@@ -159,16 +179,35 @@ static struct inode *audi_new_inode(struct inode *dir, mode_t mode)
         ret = -ENOSPC;
         goto put_inode;
     }
-	/* FIXME: we just updated inode_bitmap and data_bitmap in memory, but how do we write it back to disk? */
+	/* question: we just updated inode_bitmap and data_bitmap in memory, but how do we write it back to disk? 
+	 * answer: we do so in audi_sync_fs(), which at least will get called when we unmount the file system. */
 
     pr_info("new inode, we ask for block %u, and current data bitmap is %llx\n", bno, data_bitmap);
-    /* initialize inode */
+    /* initialize inode, this function just initializes uid, gid, mode for new inode according to posix standards */
 	/* for regular inodes, we call this inode_init_owner in audi_new_inode(),
-	 * for root inode, we call this inode_init_owner in audi_fill_super(). or do we really need to call it? */
-	/* FIXME: haven't we already initialized inode in the above iget() function? */
+	 * for root inode, we call this inode_init_owner in audi_fill_super().*/
+	/* we already initialized inode's uid, gid, mode in the above iget() function, but here we set them again if needed. */
     inode_init_owner(inode, dir, mode);
+	if(!(bh = sb_bread(sb, bno))){
+       	return ERR_PTR(-EIO);
+	}
+	pr_info("audi_new_inode: reading block %d\n", bno);
+   	dblock = (struct audi_dir_block *) bh->b_data;
+   	block = (char *) dblock;
+	/* zero out the block so as to clear old data */
+   	memset(block, 0, AUDI_BLOCK_SIZE);
     if (S_ISDIR(mode)) {
+		/* we don't just set data_block here, but we also really write the block's first two entries. */
 		ai->data_block = bno;
+		dblock->entries[0].inode = ino;
+		dblock->entries[0].name[0]='.';
+		dblock->entries[0].name[1]='\0';
+		dblock->entries[1].inode = dir->i_ino; // question: is this number correct? or do we care?
+		dblock->entries[1].name[0]='.';
+		dblock->entries[1].name[1]='.';
+		dblock->entries[1].name[2]='\0';
+		pr_info("entries[0].inode is %d, entries[1].inode is %d\n", dblock->entries[0].inode, dblock->entries[1].inode);
+
 		inode->i_size = AUDI_BLOCK_SIZE;
 		inode->i_op = &audi_dir_inode_ops;
 		inode->i_fop = &audi_dir_ops;
@@ -184,30 +223,72 @@ static struct inode *audi_new_inode(struct inode *dir, mode_t mode)
 		pr_info("register audi_aops\n");
 		set_nlink(inode, 1);
     }
+   	mark_buffer_dirty(bh);
+	/* after sb_bread, once the information is obtained, we always need to call brelse. */
+	brelse(bh);
 
 	inode->i_ctime = inode->i_atime = inode->i_mtime = CURRENT_TIME;
 	return inode;
 
 put_inode:
+	/* update data bitmap to mark this data block is free. */
+    put_block(AUDI_SB(sb), AUDI_INODE(inode)->data_block);
+    /* update inode bitmap to mark this inode is free. */
+    put_inode(AUDI_SB(sb), inode->i_ino);
+	/* dropping an inode's usage count. if the inode's use count hits
+	 * zero, the inode is then freed and may also be destroyed. iput() is defined in fs/inode.c. */
 	iput(inode);
 put_ino:
+    /* update inode bitmap to mark this inode is free. */
 	put_inode(sbi, ino);
 	return ERR_PTR(ret);
 }
 
+/*
+ * this function is called to created a file or a directory under the directory,
+ * which is represented by the first argument: dir. here we call this dir the parent directory.
+ * by the time this function is called, the dentry for the new file/directory is already created,
+ * although this dentry currently only has its d_name.
+ * what this function should do:
+ *   - if the new file's filename length is larger than AUDI_FILENAME_LEN, return -ENAMETOOLONG,
+ *   - if the parent directory is already full, return -EMLINK - indicating "too many links",
+ *   - otherwise, call audi_new_inode() to create an new inode, which will allocate a new inode and a new block,
+ *   - call memset() to cleanup this block - so that data belonging to other files/directories (which used this block before) do not get leaked.
+ *   - insert the dentry representing the new file/directory into the end of the parent directory's dentry table.
+ */
 static int audi_create(struct inode *dir, struct dentry *dentry, umode_t mode, bool excl)
 {
-	struct inode *inode;
-	/* get a new free inode */
-	inode = audi_new_inode(dir, mode);
-	return 0;
+    struct inode *inode;
+    /* get a new free inode */
+    inode = audi_new_inode(dir, mode);
+    return 0;
 }
 
+/* if we just run "ls", this lookup function won't be called - rather, audi_iterate() in dir.c will be called.
+ * if we just run "ls -l", or "ls -la", or "ls -lai", this lookup function still won't be called - rather, audi_iterate() in dir.c will be called.
+ * when we run a command like "ls -l a.txt" to list a file, this lookup function will be called; 
+ * when we run a command like "rm -f abc" to delete a file, this lookup function also gets called;
+ * when we run a command like "touch abc" to create a file, this lookup function also gets called.
+ * in the context of file creation, if the one we are going to create is already existing, then it
+ * can't created, it will be created only if after lookup(), dentry is NULL.
+ * look for dentry in dir.
+ * fill dentry with NULL if not in dir, with the corresponding inode if found.
+ * returns NULL on success.
+ * */
 static struct dentry *audi_lookup(struct inode *dir, struct dentry *dentry, unsigned int flags)
 {
     return NULL;
 }
 
+/*
+ * remove a link for a file including the reference in the parent directory.
+ * dir represents the parent directory, dentry represents the one we want to delete.
+ * If link count is 0, destroy file in this way:
+ *   - remove the file from its parent directory.
+ *   - cleanup blocks containing data
+ *   - cleanup file index block
+ *   - cleanup inode
+ */
 static int audi_unlink(struct inode *dir, struct dentry *dentry)
 {
     return 0;
@@ -218,14 +299,15 @@ static int audi_mkdir(struct inode *dir, struct dentry *dentry, umode_t mode)
     return 0;
 }
 
+/* dir is the parent directory; dentry represents the directory we want to delete. */
 static int audi_rmdir(struct inode *dir, struct dentry *dentry)
 {
     return 0;
 }
 
 const struct inode_operations audi_dir_inode_ops = {
-	.create = audi_create,
 	.lookup = audi_lookup, /* without this line, ls -a will not show the . and .. */
+	.create = audi_create,
 	.unlink = audi_unlink,
 	.mkdir = audi_mkdir,
 	.rmdir = audi_rmdir,

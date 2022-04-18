@@ -31,10 +31,11 @@ static struct inode *audi_alloc_inode(struct super_block *sb)
     return &ai->vfs_inode;
 }
 
+/* this function gets called during umount, as well as when we delete a file/directory. */
 static void audi_destroy_inode(struct inode *inode)
 {
 	struct audi_inode_info *ai = AUDI_INODE(inode);
-	pr_info("destroy inode %ld during unmount\n", inode->i_ino);
+	pr_info("destroy inode %ld\n", inode->i_ino);
 	kmem_cache_free(audi_inode_cachep, ai);
 }
 
@@ -73,7 +74,8 @@ static int audi_write_inode(struct inode *inode, struct writeback_control *wbc)
     disk_inode = (struct audi_inode *) bh->b_data;
     disk_inode += inode_shift;
 
-    /* update the mode using what the generic inode has */
+    /* update the mode using what the generic inode has.
+	 * this is the only place we actually update our audi_inode on disk. */
     disk_inode->i_mode = inode->i_mode;
     disk_inode->i_uid = i_uid_read(inode);
     disk_inode->i_gid = i_gid_read(inode);
@@ -82,6 +84,7 @@ static int audi_write_inode(struct inode *inode, struct writeback_control *wbc)
     disk_inode->i_atime = inode->i_atime.tv_sec;
     disk_inode->i_mtime = inode->i_mtime.tv_sec;
     disk_inode->i_nlink = inode->i_nlink;
+	/* this field is unique, the generic inode doesn't have this one. */
     disk_inode->data_block = ci->data_block;
 
     mark_buffer_dirty(bh);

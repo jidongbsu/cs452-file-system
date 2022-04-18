@@ -1,13 +1,12 @@
 /**
- * bitmap.h - header file
+ * bitmap.h - header file, which defines bitmap helper functions.
  *
  * Author:
  *   Jidong Xiao <jidongxiao@boisestate.edu>
- *
  */
 
-#ifndef AUDI_BITMAP_H
-#define AUDI_BITMAP_H
+#ifndef AUDIFS_BITMAP_H
+#define AUDIFS_BITMAP_H
 
 #include "audi.h"
 
@@ -67,23 +66,23 @@ static unsigned int get_free_block(struct audi_sb_info *sbi)
 /* mark an inode as unused */
 void put_inode(struct audi_sb_info *sbi, uint32_t ino)
 {
-pr_info("ino is %d, inode bitmap was 0x%llx\n", ino, inode_bitmap);
+	pr_info("ino is %d, inode bitmap was 0x%llx\n", ino, inode_bitmap);
 	/* clear bit ino and increment number of free inodes */
 	inode_bitmap &= ~(1ULL << (63-ino)); // again, we need 63- here because that's how we use our bitmap.
     sbi->s_free_inodes_count++;
-pr_info("ino is %d, inode bitmap is 0x%llx\n", ino, inode_bitmap);
+	pr_info("ino is %d, inode bitmap is 0x%llx\n", ino, inode_bitmap);
 }
 
 /* mark a block as unused */
 void put_block(struct audi_sb_info *sbi, uint32_t bno)
 {
-pr_info("data bitmap was 0x%llx\n", data_bitmap);
+	pr_info("data bitmap was 0x%llx\n", data_bitmap);
 	/* clear bit bno and increment number of free blocks */
 	data_bitmap &= ~(1ULL << (63-bno)); // again, we need 63- here because that's how we use our bitmap.
     sbi->s_free_blocks_count++;
-pr_info("data bitmap is 0x%llx\n", data_bitmap);
+	pr_info("data bitmap is 0x%llx\n", data_bitmap);
 }
 
-#endif /* AUDI_BITMAP_H */
+#endif /* AUDIFS_BITMAP_H */
 
 /* vim: set ts=4: */

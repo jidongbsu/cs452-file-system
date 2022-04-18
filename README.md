@@ -19,6 +19,10 @@ Operating Systems: Three Easy Pieces: [File System Implementation](https://pages
 
 ## Background
 
+### Directories vs Files
+
+Directories are considered a special type of files. In the file system you are going to implement, there are only two types of files: regular files, and directories. Every time a file is created, we allocate one data block, which is 4KB, to this file. Thus each file can store at most 4KB data. Every time a directory is created, we also allocate one data block to this directory. This data block does not store the directory's data, because directory itself does not have any data, rather, we use this data block to store the directory's dentry table. Read the README file of assignment 1 (i.e., [tesla](https://github.com/jidongbsu/cs452-system-call)) to refresh your memory on what directory entries (or dentries for short) are. In this assignment, we only care about the dentry's inode number and the file/directory's name.
+
 ### Links
 
 - When a file is created, by default its link count is 1. If one creates a soft or hard link to this file, its link count will be incremented by 1. In this assignment, we do not consider links to files.
@@ -69,7 +73,6 @@ drwxrwxr-x 4 cs452 cs452 199 Apr 17 19:25 ..
 
 ### Directory Entries (struct audi_dir_entry vs struct dentry)
 
-Read the README file of assignment 1 (i.e., [tesla](https://github.com/jidongbsu/cs452-system-call)) to refresh your memory on what directory entries are. In this assignment, we only care about the dentry's inode number and the file/directory's name.
 
 ### struct audi_inode vs struct inode
 

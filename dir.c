@@ -21,7 +21,8 @@ static int audi_readdir(struct file *filp, void *dirent, filldir_t filldir)
 }
 
 /*
- * called by the readdir() system call - which will then call getdents().
+ * when we run the "ls" command, without any argument, this function will be called.
+ * more specifically, this function is called by the readdir() system call - which will then call getdents().
  * and getdents(), which is defined in fs/readdir.c, has this line:
  * 		iterate_dir(f.file, &buf.ctx);
  * and this iterate_dir() is also defined in fs/readdir.c, which has the following lines:
@@ -46,10 +47,10 @@ static int audi_iterate(struct file *dir, struct dir_context *ctx)
 	struct super_block *sb = inode->i_sb;
 	struct buffer_head *bh = NULL;
 	struct audi_dir_block *dblock = NULL;
-	struct audi_dir_entry *dentry = NULL;
+	struct audi_dir_entry *audi_dentry = NULL;
 	int i;
 
-	pr_info("read dir...\n");
+	pr_info("read dir...and ctx->pos is %d\n", (int)ctx->pos);
 	/* check that dir is a directory */
 	if (!S_ISDIR(inode->i_mode))
 		return -ENOTDIR;
@@ -58,24 +59,27 @@ static int audi_iterate(struct file *dir, struct dir_context *ctx)
 	 * check that ctx->pos is not bigger than what we can handle (including
 	 * . and ..)
 	 */
-	if (ctx->pos > AUDI_MAX_SUBFILES + 2)
+	if (ctx->pos > AUDI_MAX_SUBFILES)
 		return 0;
 
-	/* commit . and .. to ctx
+	/* commit . and .. to ctx; this line guarantees that no matter what, 
+	 * when you run "ls -a", "." and ".." will for sure be displayed, even in the case
+	 * the first two entries are popluated with something else.
 	 */
 	if (!dir_emit_dots(dir, ctx))
 		return 0;	// question: why return 0 here?
 
-	/* read the directory index block on disk */
+	pr_info("read dir...and ctx->pos is then %d\n", (int)ctx->pos);
+	/* read the directory index block from disk */
 	bh = sb_bread(sb, ci->data_block);
 	if (!bh)
 		return -EIO;
 	dblock = (struct audi_dir_block *) bh->b_data;
 
 	/* iterate over the index block and commit subfiles */
-	for (i = ctx->pos - 2; i < AUDI_MAX_SUBFILES; i++) {
-		dentry = &dblock->files[i];
-		if (!dentry->inode)
+	for (i = ctx->pos; i < AUDI_MAX_SUBFILES; i++) {
+		audi_dentry = &dblock->entries[i];
+		if (!audi_dentry->inode)
 			break;
 	/* dir_emit() is defined in include/linux/fs.h as following:
 	 * static inline bool dir_emit(struct dir_context *ctx, const char *name, int namelen, u64 ino, unsigned type)
@@ -86,7 +90,7 @@ static int audi_iterate(struct file *dir, struct dir_context *ctx)
 	 * so if we assume users call getdents(), then this dir_emit() will actually call filldir(), which will fill one dentry into ctx, 
 	 * and then with for loop, we can fill in all valid dentries into ctx.
 	 */
-		if (!dir_emit(ctx, dentry->name, AUDI_FILENAME_LEN, dentry->inode, DT_UNKNOWN))
+		if (!dir_emit(ctx, audi_dentry->name, AUDI_FILENAME_LEN, audi_dentry->inode, DT_UNKNOWN))
 			break;
 		ctx->pos++;
 	}

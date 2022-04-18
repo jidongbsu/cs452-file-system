@@ -75,9 +75,11 @@ struct audi_sb_info {
 extern unsigned long long inode_bitmap;
 extern unsigned long long data_bitmap;
 
+/* structure of a directory entry, unliked the struct ext2_dir_entry, 
+ * we do not store length of this directory entry, or the name length. */
 struct audi_dir_entry {
-	uint32_t inode;
-	char name[AUDI_FILENAME_LEN];
+	uint32_t inode;	/* inode number */
+	char name[AUDI_FILENAME_LEN];	/* file name, up to AUDI_FILENAME_LEN */
 };
 
 /* each dir entry is (4 bytes + 60 bytes) = 64 bytes, 
@@ -85,7 +87,7 @@ struct audi_dir_entry {
  * thus, 64 entries at most.
  * 64*64=4096=4KB, therefore each dir block occupies one data block. */
 struct audi_dir_block {
-    struct audi_dir_entry files[AUDI_MAX_SUBFILES];
+    struct audi_dir_entry entries[AUDI_MAX_SUBFILES];
 };
 
 #ifdef __KERNEL__

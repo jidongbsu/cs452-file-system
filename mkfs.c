@@ -1,4 +1,5 @@
 /**
+ * this file implements the application utility which allows us to format a disk partition/image into our specified layout.
  * Author:
  *   Jidong Xiao <jidongxiao@boisestate.edu>
  */
@@ -174,10 +175,10 @@ static int write_data_blocks(int fd, struct superblock *sb)
     memset(dblock, 0, sizeof(struct audi_dir_block));
 
     /* first entry: . */
-    strncpy(dblock->files[0].name, ".", AUDI_FILENAME_LEN);
+    strncpy(dblock->entries[0].name, ".", AUDI_FILENAME_LEN);
 
     /* second entry: .. */
-    strncpy(dblock->files[1].name, "..", AUDI_FILENAME_LEN);
+    strncpy(dblock->entries[1].name, "..", AUDI_FILENAME_LEN);
 
 	/* each dir block has 64 entries, 
 	 * the remaining entries (entry 2 to entry 63) do not matter
