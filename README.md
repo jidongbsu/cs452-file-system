@@ -672,11 +672,10 @@ You will see the content of the file system on the disk image - test.img.
 00000d0: 0000 0000 0000 0000 0000 0000 0000 0000  ................
 00000e0: 0000 0000 0000 0000 0000 0000 0000 0000  ................
 00000f0: 0000 0000 0000 0000 0000 0000 0000 0000  ................
-0000100: 0000 0000 0000 0000 0000 0000 0000 0000  ................
 ...(omitted)
 ```
 
-The above output shows the initial state of our file system - i.e., right after running the *./mkfs.audi test.img* command. In the output, each line is 16 bytes, and 0x100 is 256 bytes, and 0x1000 is 4K bytes - which is one block. The above output shows the first 256 bytes of the file system, which also is the first 256 bytes of the first block. And as we know the first block of our file system, is the super block. So let's try to understand the above output.
+The above output shows the initial state of our file system - i.e., right after running the *./mkfs.audi test.img* command. In the output, each line is 16 bytes, and 0x100 is at byte 256, and 0x1000 is at byte 4KB - which is the size of one block. The above output shows the first 256 bytes of the file system, which also is the first 256 bytes of the first block. And as we know the first block of our file system, is the super block. So let's try to understand the above output.
 
 In audi.h, we define:
 
@@ -708,7 +707,7 @@ Note: want to know why 0x12345678 is stored as 7856 3412? do some research on bi
 
 - the last four bytes, 3700 0000: 0x37 is 55 (decimal), the reason for this is, at the initial state of this file system, we reserve 1 block for the super block, 1 block for the inode bitmap, 1 block for the data bitmap, 5 blocks for the inode table, and 1 block for the root directory's data block. Thus we have (64 - 1 - 1 - 1 - 5 - 1) = 55 free blocks available.
 
-If we keep navigating the output of the above *xxd* command, we can move on to see in 8 - which is the root directory's data block:
+If we keep navigating the output of the above *xxd* command, we can move on to examine block 8 - which is the root directory's data block:
 
 ```console
 0008000: 0200 0000 2e00 0000 0000 0000 0000 0000  ................
