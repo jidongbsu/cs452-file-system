@@ -645,6 +645,117 @@ drwxr-xr-x 2 cs452 cs452 4096 Apr 18 06:09 .
 drwxrwxr-x 5 cs452 cs452 4096 Apr 18 06:09 ..
 ```
 
+### Special Tricks
+
+One special way to debug this file system, is using the command *xxd*. If you run this following command,
+
+```console
+[cs452@localhost vsfs]$ xxd test.img | more
+```
+
+You will see the content of the file system on the disk image - test.img.
+
+```console
+0000000: 7856 3412 5000 0000 4000 0000 4e00 0000  xV4.P...@...N...
+0000010: 3700 0000 0000 0000 0000 0000 0000 0000  7...............
+0000020: 0000 0000 0000 0000 0000 0000 0000 0000  ................
+0000030: 0000 0000 0000 0000 0000 0000 0000 0000  ................
+0000040: 0000 0000 0000 0000 0000 0000 0000 0000  ................
+0000050: 0000 0000 0000 0000 0000 0000 0000 0000  ................
+0000060: 0000 0000 0000 0000 0000 0000 0000 0000  ................
+0000070: 0000 0000 0000 0000 0000 0000 0000 0000  ................
+0000080: 0000 0000 0000 0000 0000 0000 0000 0000  ................
+0000090: 0000 0000 0000 0000 0000 0000 0000 0000  ................
+00000a0: 0000 0000 0000 0000 0000 0000 0000 0000  ................
+00000b0: 0000 0000 0000 0000 0000 0000 0000 0000  ................
+00000c0: 0000 0000 0000 0000 0000 0000 0000 0000  ................
+00000d0: 0000 0000 0000 0000 0000 0000 0000 0000  ................
+00000e0: 0000 0000 0000 0000 0000 0000 0000 0000  ................
+00000f0: 0000 0000 0000 0000 0000 0000 0000 0000  ................
+0000100: 0000 0000 0000 0000 0000 0000 0000 0000  ................
+...(omitted)
+```
+
+The above output shows the initial state of our file system - i.e., right after running the *./mkfs.audi test.img* command. In the output, each line is 16 bytes, and 0x100 is 256 bytes, and 0x1000 is 4K bytes - which is one block. The above output shows the first 256 bytes of the file system, which also is the first 256 bytes of the first block. And as we know the first block of our file system, is the super block. So let's try to understand the above output.
+
+In audi.h, we define:
+
+```c
+/* super block data, follow ext2 and ext4 naming convention. 
+ * as of now, this structure is 20 bytes. */
+struct audi_sb_info {
+    uint32_t s_magic; /* Magic signature */
+    uint32_t s_inodes_count; /* Total inodes count */
+    uint32_t s_blocks_count; /* Total blocks count */
+    uint32_t s_free_inodes_count; /* Free inodes count */
+    uint32_t s_free_blocks_count; /* Free blocks count */
+};
+```
+And this *struct* defines our super block. In theory, we allocate one block for it, but we actually only use 20 bytes:
+
+- the first four bytes, as we can see, are 7856 3412, are our magic number, each file system has a unique magic number, for our file system, we use 12345678 as our magic number, which is also defined in audi.h:
+
+```c
+#define AUDI_MAGIC 0x12345678
+```
+Note: want to know why 0x12345678 is stored as 7856 3412? do some research on big endian vs little endian.
+
+- the next four bytes, 5000 0000: 0x50 is 80 (decimal), the reason for this is we have 80 inodes in total - see the book chapter.
+
+- the next four bytes, 4000 0000: 0x40 is 64 (decimal), the reason for this is we have 64 blocks in total - again, see the book chapter.
+
+- the next four bytes, 4e00 0000: 0x4e is 78 (decimal), the reason for this is, at the initial state of this file system, we reserve inode 2 for the root inode, and inode 0 in Linux is invalid. Thus, we have 78 free inodes available. (80 in total, 1 reserved, 1 invalid, thus 78 available.)
+
+- the last four bytes, 3700 0000: 0x37 is 55 (decimal), the reason for this is, at the initial state of this file system, we reserve 1 block for the super block, 1 block for the inode bitmap, 1 block for the data bitmap, 5 blocks for the inode table, and 1 block for the root directory's data block. Thus we have (64 - 1 - 1 - 1 - 5 - 1) = 55 free blocks available.
+
+If we keep navigating the output of the above *xxd* command, we can move on to see in 8 - which is the root directory's data block:
+
+```console
+0008000: 0200 0000 2e00 0000 0000 0000 0000 0000  ................
+0008010: 0000 0000 0000 0000 0000 0000 0000 0000  ................
+0008020: 0000 0000 0000 0000 0000 0000 0000 0000  ................
+0008030: 0000 0000 0000 0000 0000 0000 0000 0000  ................
+0008040: ffff ffff 2e2e 0000 0000 0000 0000 0000  ................
+0008050: 0000 0000 0000 0000 0000 0000 0000 0000  ................
+0008060: 0000 0000 0000 0000 0000 0000 0000 0000  ................
+0008070: 0000 0000 0000 0000 0000 0000 0000 0000  ................
+0008080: 0000 0000 0000 0000 0000 0000 0000 0000  ................
+0008090: 0000 0000 0000 0000 0000 0000 0000 0000  ................
+00080a0: 0000 0000 0000 0000 0000 0000 0000 0000  ................
+00080b0: 0000 0000 0000 0000 0000 0000 0000 0000  ................
+00080c0: 0000 0000 0000 0000 0000 0000 0000 0000  ................
+00080d0: 0000 0000 0000 0000 0000 0000 0000 0000  ................
+00080e0: 0000 0000 0000 0000 0000 0000 0000 0000  ................
+00080f0: 0000 0000 0000 0000 0000 0000 0000 0000  ................
+0008100: 0000 0000 0000 0000 0000 0000 0000 0000  ................
+```
+
+As you can see, at first, the data block of the root directory contains two dentries. If we refer back to the definition of *struct audi_dir_entry*,
+
+
+```c
+/* structure of a directory entry, unliked the struct ext2_dir_entry, 
+ * we do not store length of this directory entry, or the name length. */
+struct audi_dir_entry {
+	uint32_t inode;	/* inode number */
+	char name[AUDI_FILENAME_LEN];	/* file name, up to AUDI_FILENAME_LEN */
+};
+```
+
+Each entry is 64 bytes.
+
+- the first four bytes is the inode number, which for the first entry, which is ".", is 2, because we reserve inode 2 for the root inode.
+
+- the next four bytes is the name of this entry, which is 0x2e, consulting with the ASCII table, 0x2e is ".".
+
+- the first four bytes of the second entry, is once again the inode number, which is 0xffff ffff, which represents -1 - and that's how we represent the root directory's parent directory, which is not important to us.
+
+- the next four bytes of the second entry, is 0x2e2e, which is "..".
+
+If at this moment, we create a file or a directory under the root directory, we will add one more entry at the address of 0x0008080, which is 64 bytes away from the previous entry, because each entry is 64 bytes.
+
+Therefore, throughout the development process of this assignment, you can always use the *xxd* command to monitor whether or not you are writing the right content to the right address.
+
 ## Submission
 
 Due: 23:59pm, May 3rd, 2022. Late submission will not be accepted/graded.

@@ -176,9 +176,11 @@ static int write_data_blocks(int fd, struct superblock *sb)
 
     /* first entry: . */
     strncpy(dblock->entries[0].name, ".", AUDI_FILENAME_LEN);
+	dblock->entries[0].inode = AUDI_ROOT_INO;
 
     /* second entry: .. */
     strncpy(dblock->entries[1].name, "..", AUDI_FILENAME_LEN);
+	dblock->entries[1].inode = -1; // we don't really use this one, so we just set it to -1.
 
 	/* each dir block has 64 entries, 
 	 * the remaining entries (entry 2 to entry 63) do not matter
