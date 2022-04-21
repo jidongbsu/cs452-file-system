@@ -55,7 +55,7 @@ struct audi_inode {
 	uint32_t i_mtime;  /* Modification time */
 	uint32_t i_nlink;  /* Hard links count */
 	uint32_t data_block;  /* Pointer to the block - we only support one block right now, in other words, each file/directory occupies at most one block.  */
-	char padding [220]; /* add padding so as to make this matches with the one described in the book chapter: 256 bytes per inode. */
+	char padding [220]; /* add padding so as to make this match with the one described in the book chapter: 256 bytes per inode. */
 };
 
 /* 4KB per block, 256 bytes per inode, thus, it's 4096/256=16 inodes per block. */
@@ -76,7 +76,7 @@ extern unsigned long long inode_bitmap;
 extern unsigned long long data_bitmap;
 
 /* structure of a directory entry, unliked the struct ext2_dir_entry, 
- * we do not store length of this directory entry, or the name length. */
+ * we do not store the length of this directory entry, or the name length. */
 struct audi_dir_entry {
 	uint32_t inode;	/* inode number */
 	char name[AUDI_FILENAME_LEN];	/* file name, up to AUDI_FILENAME_LEN */
