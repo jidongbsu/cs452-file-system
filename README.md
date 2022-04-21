@@ -349,6 +349,13 @@ void mark_inode_dirty(struct inode *inode);
 ```c
 void d_instantiate(struct dentry *, struct inode *);
 ```
+as its name suggests, this function instantiate a dentry, which means it sets up several fields of the *struct dentry* pointer. for example, it does this:
+
+```c
+dentry->d_inode = inode;
+dentry->d_flags |= DCACHE_NEED_AUTOMOUNT;
+```
+
 10. you can now return 0.
 
 ## Implementation - *lookup*()
