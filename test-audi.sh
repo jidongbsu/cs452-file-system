@@ -47,11 +47,13 @@ mkdir ddd
 cd ddd
 touch lol
 mkdir www
-echo "now inside ddd we have:"
-ls -a
+echo "now in ddd (ls -l ddd) we have:"
 cd ..
-echo "now inside test we have:"
-ls -a
+ls -l ddd
+echo ""
+echo "now in test (ls -l) we have:"
+ls -l
+echo ""
 echo "deleting ddd"
 rmdir ddd
 

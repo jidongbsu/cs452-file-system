@@ -660,14 +660,14 @@ total 0
 
 ### Testing Script
 
-All the above tests can also be done automatically via a script, which is also provided in the starter code. The test script is *test-audi.sh*, you can run it like this (and are expected to get exactly the same results):
+All the above tests can also be done automatically via a script, which is also provided in the starter code. The test script is *test-audi.sh*, you can run it like this (and are expected to get exactly the same results, except timestamps and numbers):
 
 ```console
 [cs452@localhost cs452-file-system]$ ./test-audi.sh
 run ls -la to show what we have at first:
 total 8
-drwxr-xr-x 2 cs452 cs452 4096 Apr 21 02:47 .
-drwxrwxr-x 5 cs452 cs452 4096 Apr 21 02:46 ..
+drwxr-xr-x 2 cs452 cs452 4096 Apr 21 03:00 .
+drwxrwxr-x 5 cs452 cs452 4096 Apr 21 03:01 ..
 
 testing file creation with touch (abc and bbc) and directory creation with mkdir (cdc):
 now we have:
@@ -695,10 +695,15 @@ now we have:
 .  ..
 
 creating directory ddd with a subdirectory www, and a file lol in ddd:
-now inside ddd we have:
-.  ..  lol  www
-now inside test we have:
-.  ..  ddd
+now in ddd (ls -l ddd) we have:
+total 0
+-rw-rw-r-- 1 cs452 cs452    0 Apr 21 03:01 lol
+drwxrwxr-x 2 cs452 cs452 4096 Apr 21 03:01 www
+
+now in test (ls -l) we have:
+total 0
+drwxrwxr-x 3 cs452 cs452 4096 Apr 21 03:01 ddd
+
 deleting ddd
 rmdir: failed to remove ‘ddd’: Directory not empty
 
