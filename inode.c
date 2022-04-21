@@ -253,12 +253,12 @@ put_ino:
  *   - if the new file's filename length is larger than AUDI_FILENAME_LEN, return -ENAMETOOLONG,
  *   - if the parent directory is already full, return -EMLINK - indicating "too many links",
  *   - otherwise, call audi_new_inode() to create an new inode, which will allocate a new inode and a new block,
- *   - call memset() to cleanup this block - so that data belonging to other files/directories (which used this block before) do not get leaked.
  *   - insert the dentry representing the new file/directory into the end of the parent directory's dentry table.
  */
 static int audi_create(struct inode *dir, struct dentry *dentry, umode_t mode, bool excl)
 {
-    struct inode *inode;
+	struct inode *inode;
+    pr_info("creating a new file or directory...\n");
     /* get a new free inode */
     inode = audi_new_inode(dir, mode);
     return 0;
@@ -277,31 +277,39 @@ static int audi_create(struct inode *dir, struct dentry *dentry, umode_t mode, b
  * */
 static struct dentry *audi_lookup(struct inode *dir, struct dentry *dentry, unsigned int flags)
 {
+	pr_info("looking up...\n");
     return NULL;
 }
 
 /*
  * remove a link for a file including the reference in the parent directory.
  * dir represents the parent directory, dentry represents the one we want to delete.
- * If link count is 0, destroy file in this way:
- *   - remove the file from its parent directory.
- *   - cleanup blocks containing data
- *   - cleanup file index block
- *   - cleanup inode
+ * what this function should do:
+ * - read parent's dentry table,
+ * - search dentry in parent's dentry table, if not found, return -ENOENT.
+ * - if found, delete it, and move dentries after this forward, then zero out the previous last dentry. 
+ * - update parent's last modified time and last accessed time to current time.
+ * - if removing a directory, decrement its parent's link count by 1.
+ * - call mark_inode_dirty to flush parent's inode into disk.
+ * - zero out child's data block, reset child's inode, update data block bitmap, and update inode bitmap.
+ * - return 0.
  */
 static int audi_unlink(struct inode *dir, struct dentry *dentry)
 {
+	pr_info("unlinking...\n");
     return 0;
 }
 
 static int audi_mkdir(struct inode *dir, struct dentry *dentry, umode_t mode)
 {
-    return 0;
+    pr_info("creating a directory...\n");
+    return audi_create(dir, dentry, mode | S_IFDIR, 0);
 }
 
 /* dir is the parent directory; dentry represents the directory we want to delete. */
 static int audi_rmdir(struct inode *dir, struct dentry *dentry)
 {
+	pr_info("removing a directory...\n");
     return 0;
 }
 
