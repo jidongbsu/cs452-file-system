@@ -387,7 +387,7 @@ Note, if in step 2, the result was not found, then here you should pass *NULL* a
 
 ## Implementation - *unlink*()
 
-The *unlink*() function gets called when the user tries to delete a file (e.g., rm -f a.txt). The function has the following prototype:
+The *unlink*() function gets called when the user tries to delete a file (e.g., rm -f a.txt), or to delete a directory, e.g., rm -rf ddd: this command would call unlink() to delete files and call rmdir() to delete empty directories, rmdir() would then call unlink() to do the actual deletion. The function has the following prototype:
 ```c
 static int audi_unlink(struct inode *dir, struct dentry *dentry);
 ```
