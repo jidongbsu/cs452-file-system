@@ -663,42 +663,47 @@ total 0
 All the above tests can also be done automatically via a script, which is also provided in the starter code. The test script is *test-audi.sh*, you can run it like this (and are expected to get exactly the same results):
 
 ```console
-[cs452@localhost cs452-file-system]$ ./test-audi.sh 
+run ls -a to show what we have at first:
+.  ..
 
-testing file creation with touch and directory creation with mkdir:
+testing file creation with touch (abc and bbc) and directory creation with mkdir (cdc):
+now we have:
+.  ..  abc  bbc  cdc
 
-total 0
--rw-rw-r-- 1 cs452 cs452    0 Apr 18 06:09 abc
--rw-rw-r-- 1 cs452 cs452    0 Apr 18 06:09 bbc
-drwxrwxr-x 2 cs452 cs452 4096 Apr 18 06:09 cdc
-
-testing long file creation:
-
+testing long name file creation:
+creating mymomsaysthisfileistoolongwhydowecreateafilewithsuchalongname:
 touch: cannot touch ‘mymomsaysthisfileistoolongwhydowecreateafilewithsuchalongname’: File name too long
+
+creating mymomsaysthisfileistoolongwhydowecreateafilewithsuchalongnamewhatiswrongwithyou:
 touch: cannot touch ‘mymomsaysthisfileistoolongwhydowecreateafilewithsuchalongnamewhatiswrongwithyou’: File name too long
-total 0
--rw-rw-r-- 1 cs452 cs452    0 Apr 18 06:09 abc
--rw-rw-r-- 1 cs452 cs452    0 Apr 18 06:09 bbc
-drwxrwxr-x 2 cs452 cs452 4096 Apr 18 06:09 cdc
--rw-rw-r-- 1 cs452 cs452    0 Apr 18 06:09 eeff
+
+creating eeff
+now we have:
+.  ..  abc  bbc  cdc  eeff
 
 testing file deletion:
-
-total 0
-drwxrwxr-x 2 cs452 cs452 4096 Apr 18 06:09 cdc
+deleting abc, bbc, and eeff
+now we have:
+.  ..  cdc
 
 testing directory deletion:
+deleting cdc
+now we have:
+.  ..
 
-lol  www
-total 0
-drwxrwxr-x 3 cs452 cs452 4096 Apr 18 06:09 ddd
+creating directory ddd with a subdirectory www, and a file lol in ddd:
+now inside ddd we have:
+.  ..  lol  www
+now inside test we have:
+.  ..  ddd
+deleting ddd
 rmdir: failed to remove ‘ddd’: Directory not empty
 
 testing rm -rf to delete everything:
-
-total 4
-drwxr-xr-x 2 cs452 cs452 4096 Apr 18 06:09 .
-drwxrwxr-x 5 cs452 cs452 4096 Apr 18 06:09 ..
+before deletion we have:
+.  ..  ddd
+after deletion we now have:
+.  ..
 ```
 
 ### Special Tricks
