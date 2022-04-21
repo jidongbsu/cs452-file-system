@@ -224,6 +224,41 @@ block_num = AUDI_INODE(inode)->data_block;
 
 which is an integer.
 
+- *struct super_block* vs *struct audi_sb_info*
+
+The VFS layers defines a generic data structure called *struct super_block*. Each instance of *struct super_block* represents the super block of a file system. Our file system, as showed in the book chapter, only has one super block. When given a *struct inode* type pointer, this is how you can get the super block:
+
+```c
+struct inode *inode;
+struct super_block *sb = inode->i_sb;
+```
+
+Our file system also defines its own super block data structure, which is called *struct audi_sb_info*. Each instance of *struct audi_sb_info* also represents the super block of our file system. This data structure defines the format of the information we actually stored on the disk's super block. *struct audi_sb_info* is defined in audi.h:
+
+```c
+/* super block data, follow ext2 and ext4 naming convention. 
+ * as of now, this structure is 20 bytes. */
+struct audi_sb_info {
+    uint32_t s_magic; /* Magic signature */
+    uint32_t s_inodes_count; /* Total inodes count */
+    uint32_t s_blocks_count; /* Total blocks count */
+    uint32_t s_free_inodes_count; /* Free inodes count */
+    uint32_t s_free_blocks_count; /* Free blocks count */
+};
+```
+
+When given a *struct super_block* type pointer, for example, let's say we have *struct super_block sb*, then the following code returns its corresponding *struct audi_sb_info* type pointer.
+
+```c
+struct audi_sb_info *sbi = AUDI_SB(sb);	// you will need a line like this in your unlink() function.
+```
+
+Here, *AUDI_SB* is a helper macro defined in audi.h:
+
+```c
+#define AUDI_SB(sb) (sb->s_fs_info)
+```
+
 - The longest file name we support is 60 characters. Thus we define *AUDI_FILENAME_LEN* in audi.h:
 
 ```c
@@ -698,7 +733,7 @@ You will see the content of the file system on the disk image - test.img.
 
 The above output shows the initial state of our file system - i.e., right after running the *./mkfs.audi test.img* command. In the output, each line is 16 bytes, and 0x100 is at byte 256, and 0x1000 is at byte 4KB - which is the size of one block. The above output shows the first 256 bytes of the file system, which also is the first 256 bytes of the first block. And as we know the first block of our file system is the super block. So let's try to understand the above output.
 
-In audi.h, we define:
+Once again, in audi.h, we define:
 
 ```c
 /* super block data, follow ext2 and ext4 naming convention. 
