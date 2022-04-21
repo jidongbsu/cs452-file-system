@@ -663,6 +663,7 @@ total 0
 All the above tests can also be done automatically via a script, which is also provided in the starter code. The test script is *test-audi.sh*, you can run it like this (and are expected to get exactly the same results):
 
 ```console
+[cs452@localhost cs452-file-system]$ ./test-audi.sh
 run ls -la to show what we have at first:
 total 8
 drwxr-xr-x 2 cs452 cs452 4096 Apr 21 02:47 .
