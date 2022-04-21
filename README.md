@@ -20,13 +20,21 @@ Operating Systems: Three Easy Pieces: [File System Implementation](https://pages
 
 ## Background
 
+### The Linux Virtual File System (VFS) Layer
+
+The Linux kernel supports many different file systems, thus it defines a generic interface layer called the virtual file system (VFS) layer. (credit: this picture is from the book "Managing RAID on Linux"by Derek Vadala.)
+
+![alt text](vfs.png "VFS") 
+
+Each file system calls *register_filesystem*() to register itself into the VFS. After registration, take ext2 file system for example, when applications call *read*(), this *read*() will then call the system call function *sys_read*(), which will then call the VFS layer read function *vfs_read*(), which will then call the ext2 layer read function *do_sync_read*().
+
 ### Directories vs Files
 
 Directories are considered a special type of files. In the file system you are going to implement, there are only two types of files: regular files, and directories. Every time a file is created, we allocate one data block, which is 4KB, to this file. Thus each file can store at most 4KB data. Every time a directory is created, we also allocate one data block to this directory. This data block does not store the directory's data, because directory itself does not have any data, rather, we use this data block to store the directory's dentry table. Read the README file of assignment 1 (i.e., [tesla](https://github.com/jidongbsu/cs452-system-call)) to refresh your memory on what dentries (short for directory entries) are. In this assignment, we only care about the dentry's inode number and the file/directory's name.
 
 ### Links
 
-- When a file is created, by default its link count is 1. If one creates a soft or hard link to this file, its link count will be incremented by 1. In this assignment, we do not consider links to files.
+- When a file is created, by default its link count is 1. If one creates a soft or hard link to this file, its link count will be incremented by 1. In this assignment, we do not create links to files.
 - When a directory is created, by default its link count is 2: for a directory, the link count means how many sub-directories the directory has. A new directory by default has two sub-directories: "." and "..". Here, "." represents the current directory, ".." represents the parent directory. **Note**: a directory which only has these two sub-directories, is still called an empty directory - keep this in mind as you will use this fact when implementing one of the required functions in this assignment.
 
 In the output of *ls -l* or *ls -la*, the second column is the link counts. As can be seen from the example below, files have a link count of 1. The directory *test* has a link count of 2, because it only has "." and "..", plus a regular file called .gitkeep. The directory *cs452-file-system* has a link count of 4, because it has 4 sub-directories: ., .., test, and .git. Creating files inside a directory does not affect the directory's link count.
@@ -74,7 +82,7 @@ drwxrwxr-x 4 cs452 cs452 199 Apr 17 19:25 ..
 
 ### struct audi_dir_entry vs struct dentry
 
-The Linux kernel supports many different file systems, thus it defines a generic interface layer called the virtual file system (VFS) layer. This layer defines a generic data structure called *struct dentry*. This structure represents information that is stored in memory.
+The VFS layer defines a generic data structure called *struct dentry*. This structure represents information that is stored in memory.
 
 Our file system also defines its own directory entry data structure, which is called *struct audi_dir_entry*. This data structure represents the information that is actually stored on the disk.
 
@@ -92,11 +100,15 @@ struct audi_dir_block {
 
 Each instance of *struct audi_dir_block* is one data block which stores the dentry table for a directory. The dentry table has at most 64 entries, in other words, we allow each directory to have at most 64 files (including subdirectories).
 
-### struct audi_inode vs struct inode
+### struct audi_inode vs struct audi_inode_info vs struct inode
 
-The Linux VFS layer also defines a generic data structure called *struct inode*. This structure represents information that is stored in memory.
+The book chapter says:"the file system has to track information about each file. This information is a key piece of metadata, and tracks things like which data blocks (in the data region) comprise a file, the size of the file, its owner and access rights, access and modify times, and other similar kinds of information. To store this information, file systems usually have a structure called an inode."
 
-Our file system also defines its own inode data structure, which is called *struct audi_inode*. This data structure represents the information that is actually stored on the disk. See **the inode table** in the book chapter. Just like the example in the book chapter, each *struct audi_inode* is 256 bytes.
+
+
+The Linux VFS layer also defines a generic data structure called *struct inode*. This structure represents meta data information that is stored in memory.
+
+Our file system also defines its own inode data structure, which is called *struct audi_inode*. This data structure represents the meta data information that is actually stored on the disk. See **the inode table** in the book chapter. Just like the example in the book chapter, each *struct audi_inode* is 256 bytes.
 
 ```c
 struct audi_inode {
@@ -111,11 +123,22 @@ struct audi_inode {
     uint32_t data_block;  /* Pointer to the block - we only support one block right now, in other words, each file/directory occupies at most one block.  */
     char padding [220]; /* add padding so as to make this matches with the one described in the book chapter: 256 bytes per inode. */
 };
+```
 
+In our file system, sometimes we need to access the *struct inode*, sometimes we need to access the *struct audi_inode*, essentially both are used to represent the meta data of one file (or one directory). Therefore it is better to have a way associate their two structs, which is why *struct audi_inode_info* is defined in audi.h:
+
+```c
 struct audi_inode_info {
     uint32_t data_block;  /* pointer for this file/dir */
     struct inode vfs_inode;
 };
+```
+
+Both *struct audi_inode* and *struct audi_inode_info* contains a field *data_block*, which tells us the data block for the file (or directory) which is represented by the inode.
+
+```c
+#define AUDI_INODE(inode) \
+    (container_of(inode, struct audi_inode_info, vfs_inode))
 ```
 
 # Specification
