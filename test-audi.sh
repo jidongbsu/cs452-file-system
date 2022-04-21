@@ -1,49 +1,64 @@
 #!/bin/bash
 
 cd test
-rm -rf *
+# rm -rf *
 
+echo "run ls -la to show what we have at first:"
+ls -la
 echo ""
-echo "testing file creation with touch and directory creation with mkdir:"
-echo ""
-ls
+echo "testing file creation with touch (abc and bbc) and directory creation with mkdir (cdc):"
 touch abc
 touch bbc
 mkdir cdc
-ls -l
+echo "now we have:"
+ls -a
 
 echo ""
-echo "testing long file creation:"
-echo ""
+echo "testing long name file creation:"
+echo "creating mymomsaysthisfileistoolongwhydowecreateafilewithsuchalongname:"
 touch mymomsaysthisfileistoolongwhydowecreateafilewithsuchalongname
+echo ""
+echo "creating mymomsaysthisfileistoolongwhydowecreateafilewithsuchalongnamewhatiswrongwithyou:"
 touch mymomsaysthisfileistoolongwhydowecreateafilewithsuchalongnamewhatiswrongwithyou
+echo ""
+echo "creating eeff"
 touch eeff
-ls -l
+echo "now we have:"
+ls -a
 
 echo ""
 echo "testing file deletion:"
-echo ""
+echo "deleting abc, bbc, and eeff"
 rm -f abc
 rm -f bbc
 rm -f eeff
-ls -l
+echo "now we have:"
+ls -a
 
 echo ""
 echo "testing directory deletion:"
-echo ""
+echo "deleting cdc"
 rmdir cdc
-ls
+echo "now we have:"
+ls -a
+echo ""
+echo "creating directory ddd with a subdirectory www, and a file lol in ddd:"
 mkdir ddd
 cd ddd
 touch lol
 mkdir www
-ls
+echo "now inside ddd we have:"
+ls -a
 cd ..
-ls -l
+echo "now inside test we have:"
+ls -a
+echo "deleting ddd"
 rmdir ddd
 
 echo ""
 echo "testing rm -rf to delete everything:"
-echo ""
+echo "before deletion we have:"
+ls -a
 rm -rf ddd
-ls -la
+echo "after deletion we now have:"
+ls -a
