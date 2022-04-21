@@ -349,7 +349,7 @@ void mark_inode_dirty(struct inode *inode);
 ```c
 void d_instantiate(struct dentry *, struct inode *);
 ```
-as its name suggests, this function instantiate a dentry, which means it sets up several fields of the *struct dentry* pointer. for example, it does this:
+as its name suggests, this function instantiates a dentry, which means it sets up several fields of the *struct dentry* pointer. for example, it does this:
 
 ```c
 dentry->d_inode = inode;
