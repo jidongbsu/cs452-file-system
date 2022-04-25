@@ -384,13 +384,17 @@ The second argument here is the inode number.
 4. call *mark_inode_dirty*() to mark the parent's inode as dirty so that the kernel will put the parent's inode on the superblock's dirty list and write it into the disk.
 5. call *d_add*() to fill in the dentry with the inode's information. This function has the following prototype:
 ```c
-void d_add(struct dentry *entry, struct inode *inode);
+void d_add(struct dentry *dentry, struct inode *inode);
 ```
 
-Note, if in step 2, the result was not found, then here you should pass *NULL* as the second argument to *d_add()*.
+Note, if in step 2, the result was not found, then here you should pass *NULL* as the second argument to *d_add*(). *d_add*() will call *d_instantiate*(), which, as explained above, will set up several fields of the *struct dentry* pointer. once again, for example, it does this:
 
-6. you can now return NULL. The return value is important to the user, what they need is now at the memory address pointed to by *dentry*, which is the second argument of this *lookup*() function.
+```c
+dentry->d_inode = inode;
+dentry->d_flags |= DCACHE_NEED_AUTOMOUNT;
+```
 
+6. you can now return NULL. The return value is not important to the user, what they need is now at the memory address pointed to by *dentry*, which is the second argument of this *lookup*() function. If *dentry*'s *d_inode* is still NULL - this happens when we pass NULL as the second argument of *d_add*(), upper layer (i.e., the VFS layer) functions will return -ENOENT, and the command like "ls -l a.txt" will tell the user "No such file or directory".
 
 ## Implementation - *unlink*()
 
