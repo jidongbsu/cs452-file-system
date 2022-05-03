@@ -325,6 +325,8 @@ You can follow these steps to implement *create*():
     inode = audi_new_inode(dir, mode);
 ```
 
+**Note**: the *struct inode* has a field called *unsigned long i_ino*, that is the inode number. You will need this inode number in this right next step.
+
 4. insert the dentry representing the new file/directory into the end of the parent directory's dentry table.
 5. call *mark_inode_dirty*() to mark this inode as dirty so that the kernel will put the inode on the superblock's dirty list and write it into the disk. this function, defined in the kernel (in include/linux/fs.h), has the following prototype:
 
