@@ -380,7 +380,7 @@ You can follow these steps to implement *lookup*():
 struct inode *audi_iget(struct super_block *sb, unsigned long ino);
 ```
 
-The second argument here is the inode number.
+The second argument here is the inode number. Note that the caller of *lookup*() does not know the inode number, which means at this moment you can not deduce the inode number from the dentry. Rather, you should find out the inode number from the parent directory's dentry table.
 
 3. update the parent directory's last accessed time to current time. (refer to the *create*() implementation section to see how to update this).
 4. call *mark_inode_dirty*() to mark the parent's inode as dirty so that the kernel will put the parent's inode on the superblock's dirty list and write it into the disk.
@@ -409,25 +409,32 @@ The first argument *dir* represents the inode of the parent directory; the secon
 
 You can follow these steps to implement *unlink*():
 
-1. search the *dentry* in the parent directory's dentry table. if found, call *memmove*() to move entries after this entry forward - like what you did in assignment 1 (i.e., [tesla](https://github.com/jidongbsu/cs452-system-call)). if not found, return -ENOENT, meaning no such entry.
-2. call *memset*() to zero out the previous last entry - so that a future traverse does not count this one entry.
-3. update the parent directory's last modified time and last accessed time to current time. (refer to the *create*() implementation section to see how to update these).
-4. call *drop_nlink*() to decrement the parent directory's link count, if the newly deleted item is a directory (as opposed to a file). You can do it like this: You can do it like this:
+1. given a *dentry*, we can get its inode like this:
+```c
+struct inode *inode = d_inode(dentry);
+```
+
+*d_inode*() is a helper function defined in the linux kernel:include/linux/dcache.h. This helper function just returns *dentry->d_inode* - read the above *create*() and *lookup*() section again and you will find out that *dentry->d_inode* should be pointing to the file's (or the directory's) *inode*, which is a *struct inode* type pointer.
+
+2. search the *dentry* in the parent directory's dentry table. if found, call *memmove*() to move entries after this entry forward - like what you did in assignment 1 (i.e., [tesla](https://github.com/jidongbsu/cs452-system-call)). if not found, return -ENOENT, meaning no such entry.
+3. call *memset*() to zero out the previous last entry - so that a future traverse does not count this one entry.
+4. update the parent directory's last modified time and last accessed time to current time. (refer to the *create*() implementation section to see how to update these).
+5. call *drop_nlink*() to decrement the parent directory's link count, if the newly deleted item is a directory (as opposed to a file). You can do it like this: You can do it like this:
 ```c
     if (S_ISDIR(inode->i_mode)) {
         drop_nlink(dir);
     }
 ```
-5. call *mark_inode_dirty*() to mark the parent's inode as dirty so that the kernel will put the parent's inode on the superblock's dirty list and write it into the disk.
-6. call *memset*() to zero out the data block belonging to the deleted file.
-7. call *put_block*() so as to update the data bitmap to mark this data block is free. *put_block*(), defined in bitmap.h, has the following prototype:
+6. call *mark_inode_dirty*() to mark the parent's inode as dirty so that the kernel will put the parent's inode on the superblock's dirty list and write it into the disk.
+7. call *memset*() to zero out the data block belonging to the deleted file.
+8. call *put_block*() so as to update the data bitmap to mark this data block is free. *put_block*(), defined in bitmap.h, has the following prototype:
 ```c
 void put_block(struct audi_sb_info *sbi, uint32_t bno);
 ```
 
 Here *bno* is the block number.
 
-8. reset inode information (all to 0) and then call *mark_inode_dirty*() to mark this inode as dirty so that the kernel will put this inode on the superblock's dirty list and write it into the disk. You can do these like this:
+9. reset inode information (all to 0) and then call *mark_inode_dirty*() to mark this inode as dirty so that the kernel will put this inode on the superblock's dirty list and write it into the disk. You can do these like this:
 ```c
     AUDI_INODE(inode)->data_block = 0;
     inode->i_size = 0;
@@ -438,14 +445,14 @@ Here *bno* is the block number.
     drop_nlink(inode); /* drop nlink again? */
     mark_inode_dirty(inode);
 ```
-9. call *put_inode*() so as to update the inode bitmap to mark this inode is free. *put_inode*(), defined in bitmap.h, has the following prototype:
+10. call *put_inode*() so as to update the inode bitmap to mark this inode is free. *put_inode*(), defined in bitmap.h, has the following prototype:
 ```c
 void put_inode(struct audi_sb_info *sbi, uint32_t ino);
 ```
 
 Here *ino* is the inode number.
 
-10. you can now return 0.
+11. you can now return 0.
 
 ## Implementation - *rmdir*()
 
