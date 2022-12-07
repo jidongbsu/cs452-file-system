@@ -289,7 +289,7 @@ mark_buffer_dirty(bh);
 brelse(bh);
 ```
 
-Here, *mark_buffer_dirty*() will mark the data is dirty and therefore will soon be written back to disk; *brelse*() will release the memory, after this line, you can't access *dir_block* anymore.
+Here, *mark_buffer_dirty*() will mark the data as dirty and therefore will soon be written back to disk; *brelse*() will release the memory, after this line, you can't access the pointer *block* anymore.
 
 Also, if the block you are reading is not a regular data block belonging to a file, but rather, is a block belonging to a directory, then, instead of declaring a *char* pointer like:
 
