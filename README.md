@@ -426,7 +426,7 @@ struct inode *inode = d_inode(dentry);
     }
 ```
 6. call *mark_inode_dirty*() to mark the parent's inode as dirty so that the kernel will put the parent's inode on the superblock's dirty list and write it into the disk.
-7. call *memset*() to zero out the data block belonging to the deleted file.
+7. call *memset*() to zero out the data block belonging to the deleted file. To do this, you have to read the block from disk to memory, set the whole block to zero, and write it back to disk. See the [Related Kernel APIs](#related-kernel-apis) section for how to read and then write a block. **Note**: each block is 4096 bytes, or you can use AUDI_BLOCK_SIZE.
 8. call *put_block*() so as to update the data bitmap to mark this data block is free. *put_block*(), defined in bitmap.h, has the following prototype:
 ```c
 void put_block(struct audi_sb_info *sbi, uint32_t bno);
