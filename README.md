@@ -277,9 +277,9 @@ Here, *AUDI_SB* is a helper macro defined in audi.h:
 
 ```c
 struct buffer_head *bh;
-struct audi_dir_block *dir_block;
+char *block;
 bh = sb_bread(sb, 40);	// this is just an example, let's say you want to read block 40.
-dir_block = (struct audi_dir_block *) bh->b_data;
+block = (char *) bh->b_data;
 ```
 
 after these lines, now the data block's content is stored at the address pointed to by *dir_block*. You may want to change some part of this block, and after the change, if you want the change to be flushed back into the disk, call these two functions:
@@ -290,6 +290,24 @@ brelse(bh);
 ```
 
 Here, *mark_buffer_dirty*() will mark the data is dirty and therefore will soon be written back to disk; *brelse*() will release the memory, after this line, you can't access *dir_block* anymore.
+
+Also, if the block you are reading is not a regular data block belonging to a file, but rather, is a block belonging to a directory, then, instead of declaring a *char* pointer like:
+
+```c
+char *block;
+```
+
+you can declare a *struct audi_dir_block* pointer like: 
+
+```c
+struct audi_dir_block *dir_block;
+```
+
+and then after the sb_bread() function call, you can cast *bh->b_data* to a *struct audi_dir_block* pointer, like:
+
+```c
+dir_block = (struct audi_dir_block *) bh->b_data;
+```
 
 - The string operation functions. You may want to use:
   - strlen()
