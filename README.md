@@ -282,7 +282,7 @@ bh = sb_bread(sb, 40);	// this is just an example, let's say you want to read bl
 block = (char *) bh->b_data;
 ```
 
-after these lines, now the data block's content is stored at the address pointed to by *dir_block*. You may want to change some part of this block, and after the change, if you want the change to be flushed back into the disk, call these two functions:
+after these lines, now the data block's content is stored at the address pointed to by the pointer *block*. You may want to change some part of this block, and after the change, if you want the change to be flushed back into the disk, call these two functions:
 
 ```c
 mark_buffer_dirty(bh);
